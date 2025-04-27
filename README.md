@@ -22,19 +22,27 @@ Simply drop the following into your `claude_desktop_config.json` file:
 
 Clone this repository:
 
-```bash
+```shell
 git clone https://github.com/codevideo/codevideo-mcp.git
 ```
 
 Then, install the dependencies:
 
-```bash
+```shell
 cd codevideo-mcp
 npm install
 ```
 
-Then, run the inspector:
+Then, use the following JSON to run the local version on your Claude Desktop:
 
-```bash
-npm run inspector
+```json
+    // ... other config options
+    "codevideo-mcp": {
+        "command": "npx",
+        "args": [
+            "tsx",
+            "/path/to/your/clone/of/codevideo-mcp/src/index.ts"
+        ]
+    }
+    // ... other config options
 ```
