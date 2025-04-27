@@ -1,0 +1,25 @@
+# Source files
+src
+tests
+
+# Build configs
+rollup.config.js
+tsconfig.json
+jest.config.js
+.eslintrc
+.prettierrc
+
+# Editor and environment
+.vscode
+.idea
+.env*
+.github
+
+# Logs and temp files
+*.log
+temp-*
+output-*.mp4
+
+# Git related
+.git
+.gitignore
