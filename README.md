@@ -26,11 +26,12 @@ Clone this repository:
 git clone https://github.com/codevideo/codevideo-mcp.git
 ```
 
-Then, install the dependencies:
+Then, install the dependencies and build the project:
 
 ```shell
 cd codevideo-mcp
 npm install
+npm run build
 ```
 
 Then, use the following JSON to run the local version on your Claude Desktop:
