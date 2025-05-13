@@ -1,6 +1,6 @@
 {
   "name": "codevideo-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The MCP server for CodeVideo. Create software educational content using natural language.",
   "type": "module",
   "main": "dist/index.cjs.js",
@@ -36,7 +36,8 @@
   },
   "homepage": "https://github.com/codevideo/codevideo-mcp#readme",
   "dependencies": {
-    "@fullstackcraftllc/codevideo-exporters": "^0.0.7",
+    "@fullstackcraftllc/codevideo-adapters": "^1.0.0",
+    "@fullstackcraftllc/codevideo-exporters": "^0.0.8",
     "@fullstackcraftllc/codevideo-types": "^2.1.12",
     "@modelcontextprotocol/sdk": "^1.10.0"
   },
