@@ -34,8 +34,10 @@ export const instructionsToCreateACourse = (additionalContext: string): string =
     - lesson: the ILesson object that you created earlier
     - actions: the array of IAction objects that you created earlier
 
+    WORKFLOW TIP: For efficiency, after creating actions for each lesson, you can call \`codevideo_set_current_actions\` to store them, then use \`codevideo_get_final_lesson_snapshot\` without the actions parameter (it will use the stored actions automatically).
+
     For each lesson, you also need to create the final lesson snapshot. You can get the final snapshot the lesson by calling the MCP tool \`codevideo_get_final_lesson_snapshot\` with the following parameters:
-    - actions: the array of IAction objects that you created earlier for the lesson
+    - actions: the array of IAction objects that you created earlier for the lesson (OR omit this parameter if you've called \`codevideo_set_current_actions\` first)
 
     In summary, the steps to create a course are:
 

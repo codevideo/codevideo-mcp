@@ -11,7 +11,13 @@ const external = [
   "@fullstackcraftllc/codevideo-exporters",
   "fs",
   "@fullstackcraftllc/codevideo-virtual-ide",
-  "@fullstackcraftllc/codevideo-adapters"
+  "@fullstackcraftllc/codevideo-adapters",
+  "@google/genai",
+  "dotenv",
+  "os",
+  "path",
+  "util",
+  "better-sqlite3"
 ];
 
 export default [
