@@ -2,11 +2,11 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
-import { IAction } from "@fullstackcraftllc/codevideo-types";
-import { CURRENT_ACTIONS_KEY } from "../constants/Constants";
+import { ILesson } from "@fullstackcraftllc/codevideo-types";
+import { CURRENT_LESSON_KEY } from "../constants/Constants";
 
-// retrieves the current actions from the key value sqlite database
-export const getCurrentActions = (): IAction[] | null => {
+// retrieves the current lesson from the key value sqlite database
+export const getCurrentLesson = (): ILesson | null => {
     try {
         const homeDir = os.homedir();
         const dbPath = path.join(homeDir, '.codevideo', 'codevideo.db');
@@ -30,33 +30,33 @@ export const getCurrentActions = (): IAction[] | null => {
             return null;
         }
         
-        // Retrieve current_actions
+        // Retrieve current_lesson
         const stmt = db.prepare(`
             SELECT value FROM key_value_store 
             WHERE key = ?
         `);
         
-        const result = stmt.get(CURRENT_ACTIONS_KEY) as { value: string } | undefined;
+        const result = stmt.get(CURRENT_LESSON_KEY) as { value: string } | undefined;
         db.close();
         
         if (!result) {
             return null;
         }
         
-        // Parse JSON back to actions array
-        const actions: IAction[] = JSON.parse(result.value);
-        return actions;
+        // Parse JSON back to lesson object
+        const lesson: ILesson = JSON.parse(result.value);
+        return lesson;
     } catch (error: any) {
-        console.error('Error retrieving actions:', error);
+        console.error('Error retrieving lesson:', error);
         return null;
     }
 };
 
-// Helper function that returns actions or throws descriptive error
-export const getCurrentActionsOrThrow = (): IAction[] => {
-    const actions = getCurrentActions();
-    if (!actions) {
-        throw new Error('No actions found in storage. Please use codevideo_set_current_actions first to store actions, then try again.');
+// Helper function that returns lesson or throws descriptive error
+export const getCurrentLessonOrThrow = (): ILesson => {
+    const lesson = getCurrentLesson();
+    if (!lesson) {
+        throw new Error('No lesson found in storage. Please use codevideo_set_current_lesson first to store a lesson, then try again.');
     }
-    return actions;
+    return lesson;
 };

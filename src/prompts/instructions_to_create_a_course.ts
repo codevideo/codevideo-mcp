@@ -44,7 +44,7 @@ export const instructionsToCreateACourse = (additionalContext: string): string =
     1. Create the initial course object using the MCP tool \`codevideo_create_course_with_initial_metadata\`
     2. Plan out the number of lessons needed and what they will be about
     3. For each lesson, create a unique identifier, name, and description
-    4. Create the initial empty lesson snapshot for the first lesson using the MCP tool \`codevideo_get_empty_lesson_snapshot\`. In the case of lessons beyond the first, copy the final lesson snapshot of the previous lesson and use that as the initial lesson snapshot.
+    4. Create the initial empty lesson snapshot for the first lesson using the MCP tool \`codevideo_get_empty_lesson_snapshot\`. In the case of any lesson beyond the first lesson, generate the final lesson snapshot and copy it as the initial lesson snapshot.
     5. Create actions for the lesson using the MCP tool \`codevideo_instructions_to_create_lesson_actions\`
     6. Add actions to the lesson using the MCP tool \`codevideo_add_actions_to_lesson\`
     7. Create the final lesson snapshot using the MCP tool \`codevideo_get_final_lesson_snapshot\`

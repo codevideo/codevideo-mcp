@@ -13,6 +13,7 @@ import { instructionsToCreateLessonVideo } from './prompts/instructions_to_creat
 // tools
 import { getFinalLessonSnapshot } from "./tools/get_final_lesson_snapshot";
 import { getInitialLessonStateFromLocalCodebase } from "./tools/get_initial_lesson_state_from_local_repo";
+import { getInitialLessonStateFromGitHubRepo } from "./tools/get_initial_lesson_state_from_github_repo";
 import { isRepeatable } from "./tools/is_repeatable_action";
 import { createCourseWithInitialMetadata } from "./tools/create_course_with_initial_metadata";
 import { addLessonToCourse } from "./tools/add_lesson_to_course";
@@ -21,14 +22,18 @@ import { getEmptyLessonSnapshot } from "./tools/get_empty_lesson_snapshot";
 import { critiqueVideoUsingGemini } from "./tools/critique_video_using_gemini";
 import { setCurrentActions } from "./tools/set_current_actions";
 import { getCurrentActions } from "./tools/get_current_actions";
+import { setCurrentLesson } from "./tools/set_current_lesson";
+import { getCurrentLesson } from "./tools/get_current_lesson";
 import { makeBlogPost } from "./tools/make_blog_post";
 import { makeHTMLWebPage } from "./tools/make_html_web_page";
-import { makeVideo } from "./tools/make_video";
+import { makeVideoFromActions } from "./tools/make_video_from_actions";
+import { makeVideoFromLesson } from "./tools/make_video_from_lesson";
 import { validateActions } from "./tools/validate_actions";
 
 // resources
 import { getActionNames } from "./resources/get_action_names";
-import { getExampleLesson } from "./resources/get_example_lesson";
+import { getExampleActionsArrayByKeyword } from "./resources/get_example_actions_array_by_keyword";
+import { getExampleLessonByKeyword } from './resources/get_example_lessons_by_keyword';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -269,7 +274,7 @@ server.tool(
 );
 
 server.tool(
-    "codevideo_get_example_lesson",
+    "codevideo_get_example_actions_array_by_keyword",
     {
         keyword: z.string()
     },
@@ -277,7 +282,22 @@ server.tool(
         return {
             content: [{
                 type: "text",
-                text: getExampleLesson(keyword)
+                text: getExampleActionsArrayByKeyword(keyword)
+            }]
+        };
+    }
+);
+
+server.tool(
+    "codevideo_get_example_lesson_by_keyword",
+    {
+        keyword: z.string()
+    },
+    async ({ keyword }) => {
+        return {
+            content: [{
+                type: "text",
+                text: getExampleLessonByKeyword(keyword)
             }]
         };
     }
@@ -285,14 +305,31 @@ server.tool(
 
 server.tool(
     "codevideo_get_initial_lesson_state_from_local_repo",
+    "Create an initial lesson state snapshot from a local repository/codebase directory. This captures the file structure and creates an empty lesson template ready for action recording.",
     {
-        repoLocation: z.string()
+        repoLocation: z.string().describe("Local file system path to the repository/codebase directory")
     },
     async ({ repoLocation }) => {
         return {
             content: [{
                 type: "text",
                 text: await getInitialLessonStateFromLocalCodebase(repoLocation)
+            }]
+        };
+    }
+);
+
+server.tool(
+    "codevideo_get_initial_lesson_state_from_github_repo",
+    "Create an initial lesson state snapshot from a GitHub repository URL. This fetches the repository content, captures the file structure, and creates an empty lesson template ready for action recording.",
+    {
+        repoUrl: z.string().describe("GitHub repository URL (e.g., https://github.com/user/repo)")
+    },
+    async ({ repoUrl }) => {
+        return {
+            content: [{
+                type: "text",
+                text: await getInitialLessonStateFromGitHubRepo(repoUrl)
             }]
         };
     }
@@ -337,7 +374,7 @@ server.tool(
 );
 
 server.tool(
-    "codevideo_make_video",
+    "codevideo_make_video_from_actions",
     "Generate a video from CodeVideo actions. Pass actions array OR use previously stored actions from codevideo_set_current_actions (recommended workflow).",
     {
         actions: z.array(ActionSchema).optional().describe("Array of CodeVideo actions. Optional if actions were previously stored with codevideo_set_current_actions")
@@ -347,7 +384,7 @@ server.tool(
         const typedActions = actions as IAction[] | undefined;
 
         try {
-            const result = await makeVideo(typedActions);
+            const result = await makeVideoFromActions(typedActions);
             return {
                 content: [{
                     type: "text",
@@ -374,6 +411,50 @@ server.tool(
                 content: [{
                     type: "text",
                     text: `Error creating video: ${error?.message || String(error)}`
+                }]
+            };
+        }
+    }
+);
+
+server.tool(
+    "codevideo_make_video_from_lesson",
+    "Generate a video from a complete lesson object. Pass a lesson object OR use previously stored lesson from lesson management tools. This is useful when you have a full lesson with snapshots rather than just actions.",
+    {
+        lesson: LessonSchema.optional().describe("Complete lesson object with snapshots. Optional if lesson was previously stored with lesson management tools")
+    },
+    async ({ lesson }) => {
+        // Cast the lesson to ILesson if provided
+        const typedLesson = lesson as ILesson | undefined;
+
+        try {
+            const result = await makeVideoFromLesson(typedLesson);
+            return {
+                content: [{
+                    type: "text",
+                    text: JSON.stringify({
+                        outputPath: result.outputPath,
+                        stdout: result.stdout,
+                        stderr: result.stderr
+                    }, null, 2)
+                }]
+            };
+        } catch (error: any) {
+            console.error('Error making video from lesson:', error);
+            // If the error has the VideoResult structure
+            if (error && typeof error === 'object' && 'stdout' in error && 'stderr' in error) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Error creating video from lesson: ${error.error?.message || String(error.error)}\nstdout: ${error.stdout}\nstderr: ${error.stderr}`
+                    }]
+                };
+            }
+            // Fall back to simple error message
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error creating video from lesson: ${error?.message || String(error)}`
                 }]
             };
         }
@@ -486,6 +567,49 @@ server.tool(
             content: [{
                 type: "text",
                 text: JSON.stringify(actions, null, 2)
+            }]
+        };
+    }
+)
+
+server.tool(
+    "codevideo_set_current_lesson",
+    "Store a complete lesson object in local SQLite database for reuse across multiple tool calls. Once set, other tools can be called without re-specifying the lesson.",
+    {
+        lesson: LessonSchema.describe("Complete lesson object to store for later use")
+    },
+    async ({ lesson }) => {
+        // Cast the lesson to ILesson
+        const typedLesson = lesson as ILesson;
+
+        return {
+            content: [{
+                type: "text",
+                text: setCurrentLesson(typedLesson)
+            }]
+        };
+    }
+)
+
+server.tool(
+    "codevideo_get_current_lesson",
+    "Retrieve the currently stored lesson from local database. Use this to inspect what lesson was previously set with codevideo_set_current_lesson.",
+    {},
+    async () => {
+        const lesson = getCurrentLesson();
+        if (!lesson) {
+            return {
+                content: [{
+                    type: "text",
+                    text: "No lesson found in storage. Use codevideo_set_current_lesson first to store a lesson."
+                }]
+            };
+        }
+
+        return {
+            content: [{
+                type: "text",
+                text: JSON.stringify(lesson, null, 2)
             }]
         };
     }

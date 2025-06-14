@@ -1,9 +1,9 @@
+import { buildFileStructureFromGitHub } from "@fullstackcraftllc/codevideo-adapters";
 import { ILesson } from "@fullstackcraftllc/codevideo-types";
-import { buildFileStructureFromRootFolder } from "@fullstackcraftllc/codevideo-adapters";
 
-export const getInitialLessonStateFromLocalCodebase = async (repoLocation: string): Promise<string> => {
+export const getInitialLessonStateFromGitHubRepo = async (repoUrl: string): Promise<string> => {
     // build file structure from files and content from the file system adapter
-    const { fileStructure } = await buildFileStructureFromRootFolder(repoLocation);
+    const fileStructure = await buildFileStructureFromGitHub(repoUrl);
 
     // build the project using the file structure
     const project: ILesson = {

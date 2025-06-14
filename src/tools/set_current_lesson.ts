@@ -2,11 +2,11 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
-import { IAction } from "@fullstackcraftllc/codevideo-types";
-import { CURRENT_ACTIONS_KEY } from "../constants/Constants";
+import { ILesson } from "@fullstackcraftllc/codevideo-types";
+import { CURRENT_LESSON_KEY } from "../constants/Constants";
 
-// sets the current actions to the key value sqlite database
-export const setCurrentActions = (actions: IAction[]): string => {
+// sets the current lesson to the key value sqlite database
+export const setCurrentLesson = (lesson: ILesson): string => {
     try {
         // Create database directory if it doesn't exist
         const homeDir = os.homedir();
@@ -29,20 +29,20 @@ export const setCurrentActions = (actions: IAction[]): string => {
             )
         `);
         
-        // Prepare statement to insert or replace the current_actions
+        // Prepare statement to insert or replace the current_lesson
         const stmt = db.prepare(`
             INSERT OR REPLACE INTO key_value_store (key, value, updated_at) 
             VALUES (?, ?, CURRENT_TIMESTAMP)
         `);
         
-        // Convert actions to JSON string and store
-        const actionsJson = JSON.stringify(actions);
-        stmt.run(CURRENT_ACTIONS_KEY, actionsJson);
+        // Convert lesson to JSON string and store
+        const lessonJson = JSON.stringify(lesson);
+        stmt.run(CURRENT_LESSON_KEY, lessonJson);
         
         db.close();
         
-        return `Successfully stored ${actions.length} actions in local database at ${dbPath}`;
+        return `Successfully stored lesson "${lesson.name}" (ID: ${lesson.id}) in local database at ${dbPath}`;
     } catch (error: any) {
-        return `Error storing actions: ${error.message}`;
+        return `Error storing lesson: ${error.message}`;
     }
 };

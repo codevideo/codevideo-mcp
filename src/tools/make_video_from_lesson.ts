@@ -1,10 +1,8 @@
 import os from "os";
 import path from "path";
-import fs from "fs";
 import { spawn } from "child_process";
-import { IAction } from "@fullstackcraftllc/codevideo-types";
-import { getCurrentActionsOrThrow } from "./get_current_actions";
-import { getBinaryPath } from "../utils/getBinaryPath";
+import { ILesson } from "@fullstackcraftllc/codevideo-types";
+import { getCurrentLessonOrThrow } from "./get_current_lesson";
 
 export interface VideoResult {
     outputPath: string;
@@ -13,12 +11,12 @@ export interface VideoResult {
     error?: any;
 }
 
-export const makeVideo = async (actions?: IAction[]): Promise<VideoResult> => {
+export const makeVideoFromLesson = async (lesson?: ILesson): Promise<VideoResult> => {
 
     // attempt to read CLI path from env varaible PATH_TO_CODEVIDEO_CLI - if PATH_TO_CODEVIDEO_CLI is not set return error message
     // const cliExePath = process.env.PATH_TO_CODEVIDEO_CLI;
     // hardcoded now for demo
-    const cliExePath = "/Users/chris/enterprise/codevideo/codevideo-cli";
+    const cliExePath = "/Users/chris/enterprise/codevideo/codevideo-cli/codevideo";
 
     // TODO: reactivate getBinaryPath from the go binaries that are downloaded from releases github and packaged here
     // we will likely have signing issues on macOS, so we will need to sign the binary ourselves
@@ -78,11 +76,11 @@ export const makeVideo = async (actions?: IAction[]): Promise<VideoResult> => {
     const cliDirPath = path.dirname(cliExePath);
 
     try {
-        // Use provided actions or retrieve from storage
-        const actionsToUse = actions || getCurrentActionsOrThrow();
+        // Use provided lesson or retrieve from storage
+        const lessonToUse = lesson || getCurrentLessonOrThrow();
         // Create JSON string directly
-        const actionsJson = JSON.stringify(actionsToUse);
-        
+        const lessonJson = JSON.stringify(lessonToUse);
+
         // Create output file on desktop with timestamp
         const homeDir = os.homedir();
         const desktopDir = path.join(homeDir, 'Desktop');
@@ -92,7 +90,7 @@ export const makeVideo = async (actions?: IAction[]): Promise<VideoResult> => {
         // Fire-and-forget: Start the video generation process in the background
         const child = spawn(
             cliExePath,
-            ['run', '.', '-p', actionsJson, '-o', outputFile, '--open'], 
+            ['run', '.', '-p', lessonJson, '-o', outputFile, '--open'],
             {
                 cwd: cliDirPath,
                 detached: true,
@@ -106,7 +104,7 @@ export const makeVideo = async (actions?: IAction[]): Promise<VideoResult> => {
         // Return immediately with status message
         return {
             outputPath: outputFile,
-            stdout: `Video generation job with ${actionsToUse.length} actions has started in the background via the codevideo-cli command. MP4 file path: ${outputFile}. It should open automatically as soon as it is done being rendered - this could take a while depending on how many actions there are.`,
+            stdout: `Video generation job with lesson has started in the background via the codevideo-cli command. MP4 file path: ${outputFile}. It should open automatically as soon as it is done being rendered - this could take a while depending on the complexity of the lesson.`,
             stderr: ''
         };
     } catch (error: any) {

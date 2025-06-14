@@ -1,6 +1,6 @@
 import { IAction } from "@fullstackcraftllc/codevideo-types";
 
-const keywordsToExampleMap: Array<{ keywords: string[], actions: Array<IAction> }> = [
+const keywordsToExampleActionsMap: Array<{ keywords: string[], actions: Array<IAction> }> = [
     {
         keywords: ["console log", "javascript", "js", "log"],
         actions: [
@@ -324,19 +324,19 @@ const keywordsToExampleMap: Array<{ keywords: string[], actions: Array<IAction> 
 
 // returns a JSON representation of an example lesson based on keywords
 // the LLM can use this to learn real example lessons created by humans
-export const getExampleLesson = (keyword: string | string[]): string => {
+export const getExampleActionsArrayByKeyword = (keyword: string | string[]): string => {
     const exampleJSONs: string[] = [];
 
     if (Array.isArray(keyword)) {
         // if the keyword is an array, loop over all keywords and get the example lesson for each one
         for (var i = 0; i < keyword.length; i++) {
-            const exampleJSON = getExampleLesson(keyword[i]);
+            const exampleJSON = getExampleActionsArrayByKeyword(keyword[i]);
             exampleJSONs.push(exampleJSON);
         }
         return exampleJSONs.join(", ");
     } else {
         // if the keyword is a string, get the example lesson for that keyword
-        const exampleJSON = getSingleExampleLesson(keyword);
+        const exampleJSON = getSingleExampleActionsArray(keyword);
         if (exampleJSON) {
             return exampleJSON;
         }
@@ -345,10 +345,10 @@ export const getExampleLesson = (keyword: string | string[]): string => {
     return "";
 }
 
-const getSingleExampleLesson = (keyword: string): string => {
+const getSingleExampleActionsArray = (keyword: string): string => {
     // loop over all keywords and find the first one that matches
-    for (var i = 0; i < keywordsToExampleMap.length; i++) {
-        const keywordMap = keywordsToExampleMap[i];
+    for (var i = 0; i < keywordsToExampleActionsMap.length; i++) {
+        const keywordMap = keywordsToExampleActionsMap[i];
         if (keywordMap.keywords.includes(keyword)) {
             return JSON.stringify(keywordMap.actions);
         }
