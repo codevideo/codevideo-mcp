@@ -7,16 +7,20 @@ Create software educational content using natural language.
 ## Examples:
 
 Creation:
+
 - "Build a video lesson on how to use the `useState` hook in React"
 - "Can you create a video lesson compare and contrasting how to program concurrently in C#, Go, and Rust?"
 - Can you give me a markdown blog post on how to use the `useState` hook in React?"
 
 Conversion:
+
 - "Please convert these CodeVideo JSON actions to a video"
 - "Convert these CodeVideo JSON actions to a blog post"
 - "Convert these CodeVideo JSON actions to HTML"
+- "Can you convert this lesson to one in Spanish?"
 
 Validation:
+
 - "Are these CodeVideo JSON actions valid?"
 
 ## Usage with Claude Desktop
@@ -82,4 +86,4 @@ Then, use the following JSON to run the local version on your Claude Desktop:
 
 ## Known Issues
 
-- Currently, creating entire courses seems to be a bit flakey and perhaps too large for the context window for Claude. We're working on refining the full course flow. Single lesson generation seems to work well.
+- Currently, creating entire courses seems to be a bit flakey and perhaps too large for the context window for Claude. We're working on refining the full course flow. Single lesson, or action array generation both seem to work well.

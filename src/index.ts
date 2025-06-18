@@ -9,6 +9,7 @@ import { IAction, ICourse, ILesson } from "@fullstackcraftllc/codevideo-types";
 import { instructionsToCreateACourse } from "./prompts/instructions_to_create_a_course";
 import { instructionsToCreateLessonActions } from "./prompts/instructions_to_create_lesson_actions";
 import { instructionsToCreateLessonVideo } from './prompts/instructions_to_create_lesson_video';
+import { instructionsToTranslateActions } from './prompts/instructions_to_translate_actions';
 
 // tools
 import { getFinalLessonSnapshot } from "./tools/get_final_lesson_snapshot";
@@ -64,19 +65,26 @@ const CourseSchema = z.object({
     lessons: z.array(LessonSchema)
 });
 
-const server = new McpServer({
-    name: "codevideo-mcp",
-    version: packageJson.version,
-    env: {
-        // preserve existing environment variables
-        ...Object.fromEntries(
-            Object.entries(process.env)
-                .filter(([, value]) => value !== undefined)
-                .map(([key, value]) => [key, value as string])
-        ),
-        MCP_TIMEOUT: String(1200000), // 20 min - needed for video creation waiting
-    }
-});
+export function createMcpServer(): McpServer {
+    const server = new McpServer({
+        name: "codevideo-mcp",
+        version: packageJson.version,
+        env: {
+            // preserve existing environment variables
+            ...Object.fromEntries(
+                Object.entries(process.env)
+                    .filter(([, value]) => value !== undefined)
+                    .map(([key, value]) => [key, value as string])
+            ),
+            MCP_TIMEOUT: String(1200000), // 20 min - needed for video creation waiting
+        }
+    });
+
+    setupMcpServerTools(server);
+    return server;
+}
+
+function setupMcpServerTools(server: McpServer): void {
 
 // Commenting out prompts and resources that aren't showing up 
 // - does Claude just use them internally?
@@ -160,6 +168,26 @@ server.tool(
             content: [{
                 type: "text",
                 text: instructionsToCreateLessonVideo(additionalContext)
+            }]
+        };
+    }
+);
+
+server.tool(
+    "codevideo_instructions_to_translate_actions",
+    "Generate translation instructions for CodeVideo actions. Pass actions array OR use previously stored actions from codevideo_set_current_actions (recommended workflow).",
+    {
+        actionsToTranslation: z.array(ActionSchema).optional().describe("Array of CodeVideo actions to translate. Optional if actions were previously stored with codevideo_set_current_actions"),
+        targetLanguage: z.string().describe("Target language for translation (e.g., 'Spanish', 'French', 'German')")
+    },
+    async ({ actionsToTranslation, targetLanguage }) => {
+        // Cast the actions to IAction if provided
+        const typedActions = actionsToTranslation as IAction[] | undefined;
+
+        return {
+            content: [{
+                type: "text",
+                text: instructionsToTranslateActions(typedActions, targetLanguage)
             }]
         };
     }
@@ -615,8 +643,13 @@ server.tool(
     }
 )
 
-// start the server
-const transport = new StdioServerTransport();
-(async () => {
-    await server.connect(transport);
-})();
+}
+
+// start the server when running directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+    const server = createMcpServer();
+    const transport = new StdioServerTransport();
+    (async () => {
+        await server.connect(transport);
+    })();
+}

@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeVideo MCP REST API</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+        }
+        .endpoint {
+            background: #ecf0f1;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .method.post { background: #27ae60; }
+        .method.get { background: #3498db; }
+        .method.delete { background: #e74c3c; }
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .example {
+            margin: 15px 0;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-pending { background: #f39c12; color: white; }
+        .status-running { background: #3498db; color: white; }
+        .status-completed { background: #27ae60; color: white; }
+        .status-failed { background: #e74c3c; color: white; }
+        .status-cancelled { background: #95a5a6; color: white; }
+        .toc {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 30px;
+        }
+        .toc ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        .toc li {
+            margin: 5px 0;
+        }
+        .toc a {
+            text-decoration: none;
+            color: #3498db;
+        }
+        .toc a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 CodeVideo MCP REST API Documentation</h1>
+        
+        <div class="toc">
+            <h3>Table of Contents</h3>
+            <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#getting-started">Getting Started</a></li>
+                <li><a href="#endpoints">API Endpoints</a></li>
+                <li><a href="#websocket">WebSocket Support</a></li>
+                <li><a href="#examples">Examples</a></li>
+                <li><a href="#error-handling">Error Handling</a></li>
+            </ul>
+        </div>
+
+        <h2 id="overview">Overview</h2>
+        <p>The CodeVideo MCP REST API provides a HTTP wrapper around the Model Context Protocol (MCP) server for CodeVideo. It enables you to create educational video content programmatically using natural language prompts or direct tool calls.</p>
+        
+        <p><strong>Key Features:</strong></p>
+        <ul>
+            <li>🔄 Asynchronous processing with job queue system</li>
+            <li>📊 Real-time progress updates via WebSocket</li>
+            <li>⏰ Long-running task support with timeout handling</li>
+            <li>🚫 Task cancellation capabilities</li>
+            <li>🔍 Task status polling and result retrieval</li>
+            <li>📝 Natural language prompt processing</li>
+        </ul>
+
+        <h2 id="getting-started">Getting Started</h2>
+        
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/health</code>
+            <p>Check server health and MCP connection status</p>
+        </div>
+
+        <div class="example">
+            <strong>Response:</strong>
+            <pre>{
+  "status": "healthy",
+  "timestamp": "2025-01-18T10:00:00.000Z",
+  "mcpServerReady": true
+}</pre>
+        </div>
+
+        <h2 id="endpoints">API Endpoints</h2>
+
+        <h3>Submit Task</h3>
+        <div class="endpoint">
+            <span class="method post">POST</span>
+            <code>/codevideo-mcp</code>
+            <p>Submit a new task for processing. Returns immediately with task ID and status URL.</p>
+        </div>
+
+        <div class="example">
+            <strong>Request Body (Natural Language):</strong>
+            <pre>{
+  "prompt": "Create a Python course about data structures with 5 lessons"
+}</pre>
+        </div>
+
+        <div class="example">
+            <strong>Request Body (Direct Tool Call):</strong>
+            <pre>{
+  "tool": "create_course_with_initial_metadata",
+  "args": {
+    "name": "Python Data Structures",
+    "description": "Learn fundamental data structures in Python"
+  }
+}</pre>
+        </div>
+
+        <div class="example">
+            <strong>Response (202 Accepted):</strong>
+            <pre>{
+  "taskId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "accepted",
+  "statusUrl": "/codevideo-mcp/tasks/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "message": "Task accepted for processing"
+}</pre>
+        </div>
+
+        <h3>Get Task Status</h3>
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/codevideo-mcp/tasks/{taskId}</code>
+            <p>Get current status and progress of a task</p>
+        </div>
+
+        <div class="example">
+            <strong>Response:</strong>
+            <pre>{
+  "taskId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "running",
+  "createdAt": "2025-01-18T10:00:00.000Z",
+  "updatedAt": "2025-01-18T10:00:30.000Z",
+  "cancelable": true,
+  "progress": {
+    "percentage": 45,
+    "currentStep": "Generating lesson content",
+    "details": {}
+  }
+}</pre>
+        </div>
+
+        <p><strong>Task Status Values:</strong></p>
+        <ul>
+            <li><span class="status-badge status-pending">pending</span> Task queued for processing</li>
+            <li><span class="status-badge status-running">running</span> Task currently being processed</li>
+            <li><span class="status-badge status-completed">completed</span> Task finished successfully</li>
+            <li><span class="status-badge status-failed">failed</span> Task failed with error</li>
+            <li><span class="status-badge status-cancelled">cancelled</span> Task was cancelled</li>
+        </ul>
+
+        <h3>Get Task Result</h3>
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/codevideo-mcp/tasks/{taskId}/result</code>
+            <p>Get the result of a completed task</p>
+        </div>
+
+        <div class="example">
+            <strong>Response:</strong>
+            <pre>{
+  "taskId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "result": {
+    "course": {
+      "id": "course_123",
+      "name": "Python Data Structures",
+      "lessons": [...]
+    }
+  },
+  "completedAt": "2025-01-18T10:05:00.000Z"
+}</pre>
+        </div>
+
+        <h3>Cancel Task</h3>
+        <div class="endpoint">
+            <span class="method delete">DELETE</span>
+            <code>/codevideo-mcp/tasks/{taskId}</code>
+            <p>Cancel a pending or running task</p>
+        </div>
+
+        <h3>List Tasks</h3>
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/codevideo-mcp/tasks</code>
+            <p>List all tasks with pagination</p>
+        </div>
+
+        <p><strong>Query Parameters:</strong></p>
+        <ul>
+            <li><code>page</code> - Page number (default: 1)</li>
+            <li><code>limit</code> - Items per page (default: 10, max: 100)</li>
+            <li><code>status</code> - Filter by status</li>
+        </ul>
+
+        <h3>Get Capabilities</h3>
+        <div class="endpoint">
+            <span class="method get">GET</span>
+            <code>/codevideo-mcp/capabilities</code>
+            <p>Get available MCP tools, prompts, and resources</p>
+        </div>
+
+        <h2 id="websocket">WebSocket Support</h2>
+        <p>Connect to <code>ws://localhost:3000</code> for real-time task updates.</p>
+
+        <div class="example">
+            <strong>Subscribe to task updates:</strong>
+            <pre>// Client-side JavaScript
+const socket = io('ws://localhost:3000');
+
+// Subscribe to specific task
+socket.emit('subscribe-task', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890');
+
+// Listen for updates
+socket.on('task-update', (task) => {
+    console.log('Task update:', task);
+    // Update UI with progress
+});</pre>
+        </div>
+
+        <h2 id="examples">Examples</h2>
+
+        <h3>Example 1: Create a Course</h3>
+        <div class="example">
+            <pre>curl -X POST http://localhost:3000/codevideo-mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Create a JavaScript course about async programming with 3 lessons covering promises, async/await, and error handling"
+  }'</pre>
+        </div>
+
+        <h3>Example 2: Generate Video from Actions</h3>
+        <div class="example">
+            <pre>curl -X POST http://localhost:3000/codevideo-mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tool": "make_video_from_actions",
+    "args": {
+      "actions": [...],
+      "outputPath": "/tmp/video.mp4"
+    }
+  }'</pre>
+        </div>
+
+        <h3>Example 3: Poll for Task Status</h3>
+        <div class="example">
+            <pre>#!/bin/bash
+TASK_ID="a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+while true; do
+  STATUS=$(curl -s "http://localhost:3000/codevideo-mcp/tasks/$TASK_ID" | jq -r '.status')
+  echo "Task status: $STATUS"
+  
+  if [[ "$STATUS" == "completed" || "$STATUS" == "failed" || "$STATUS" == "cancelled" ]]; then
+    break
+  fi
+  
+  sleep 5
+done
+
+# Get result if completed
+if [[ "$STATUS" == "completed" ]]; then
+  curl -s "http://localhost:3000/codevideo-mcp/tasks/$TASK_ID/result"
+fi</pre>
+        </div>
+
+        <h2 id="error-handling">Error Handling</h2>
+        
+        <p><strong>HTTP Status Codes:</strong></p>
+        <ul>
+            <li><code>200 OK</code> - Request successful</li>
+            <li><code>202 Accepted</code> - Task accepted for processing</li>
+            <li><code>400 Bad Request</code> - Invalid request</li>
+            <li><code>404 Not Found</code> - Task not found</li>
+            <li><code>409 Conflict</code> - Task cannot be modified</li>
+            <li><code>500 Internal Server Error</code> - Server error</li>
+            <li><code>503 Service Unavailable</code> - MCP server not ready</li>
+        </ul>
+
+        <div class="example">
+            <strong>Error Response Format:</strong>
+            <pre>{
+  "error": "Task not found",
+  "message": "No task found with ID: invalid-task-id",
+  "timestamp": "2025-01-18T10:00:00.000Z"
+}</pre>
+        </div>
+
+        <h2>Environment Variables</h2>
+        <ul>
+            <li><code>REST_PORT</code> - Server port (default: 3000)</li>
+            <li><code>MAX_CONCURRENT_JOBS</code> - Max concurrent tasks (default: 5)</li>
+            <li><code>JOB_TIMEOUT</code> - Default job timeout in seconds (default: 300)</li>
+        </ul>
+
+        <hr style="margin: 40px 0;">
+        <p style="text-align: center; color: #7f8c8d;">
+            <strong>CodeVideo MCP REST API</strong> - Transform natural language into educational video content
+        </p>
+    </div>
+</body>
+</html>

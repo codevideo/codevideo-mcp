@@ -1,6 +1,6 @@
 {
   "name": "@fullstackcraftllc/codevideo-mcp",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "The MCP server for CodeVideo. Create software educational content using natural language.",
   "type": "module",
   "main": "dist/index.cjs.js",
@@ -20,7 +20,11 @@
     "build-typescript": "tsc",
     "test": "jest",
     "type-check": "tsc --noEmit",
-    "download-binaries": "tsx scripts/download-binaries.ts"
+    "download-binaries": "tsx scripts/download-binaries.ts",
+    "rest-server": "tsx src/rest-server/server.ts",
+    "rest-server:dev": "tsx --watch src/rest-server/server.ts",
+    "client:example": "tsx examples/rest-client.ts",
+    "examples:curl": "./examples/curl-examples.sh"
   },
   "repository": {
     "type": "git",
@@ -46,14 +50,24 @@
     "@modelcontextprotocol/sdk": "^1.10.0",
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^11.10.0",
-    "dotenv": "^16.5.0"
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "node-fetch": "^3.3.2",
+    "socket.io": "^4.8.1",
+    "uuid": "^9.0.1",
+    "ws": "^8.18.2"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.3",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.1",
     "@rollup/plugin-typescript": "^12.1.2",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.23",
     "@types/node": "^22.14.1",
+    "@types/uuid": "^9.0.8",
+    "@types/ws": "^8.18.1",
     "rimraf": "^6.0.1",
     "rollup": "^4.40.0",
     "rollup-plugin-dts": "^6.2.1",
