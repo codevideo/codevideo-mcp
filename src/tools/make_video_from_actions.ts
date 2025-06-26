@@ -13,7 +13,7 @@ export interface VideoResult {
 
 export const makeVideoFromActions = async (actions?: IAction[]): Promise<VideoResult> => {
 
-    // attempt to read CLI path from env varaible PATH_TO_CODEVIDEO_CLI - if PATH_TO_CODEVIDEO_CLI is not set return error message
+    // attempt to read CLI path from env variable PATH_TO_CODEVIDEO_CLI - if PATH_TO_CODEVIDEO_CLI is not set return error message
     // const cliExePath = process.env.PATH_TO_CODEVIDEO_CLI;
     // hardcoded now for demo
     const cliExePath = "/Users/chris/enterprise/codevideo/codevideo-cli/codevideo";

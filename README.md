@@ -17,7 +17,7 @@ Conversion:
 - "Please convert these CodeVideo JSON actions to a video"
 - "Convert these CodeVideo JSON actions to a blog post"
 - "Convert these CodeVideo JSON actions to HTML"
-- "Can you convert this lesson to one in Spanish?"
+- "Can you convert this English-based lesson to Spanish?"
 
 Validation:
 
@@ -38,7 +38,8 @@ Simply drop the following into your `claude_desktop_config.json` file:
         ],
         "env": {
             "ELEVENLABS_API_KEY": "your-elevenlabs-api-key",
-            "ELEVENLABS_VOICE_ID": "your-elevenlabs-voice-id"
+            "ELEVENLABS_VOICE_ID": "your-elevenlabs-voice-id",
+            "PATH_TO_CODEVIDEO_CLI": "/path/to/your/codevideo-cli/binary",
         }
     },
     // ... other MCP servers
@@ -78,7 +79,9 @@ Then, use the following JSON to run the local version on your Claude Desktop:
             "/path/to/your/clone/of/codevideo-mcp/src/index.ts"
         ],
         "env": {
-            "PATH_TO_CODEVIDEO_CLI": "/path/to/your/codevideo-cli",
+            "ELEVENLABS_API_KEY": "your-elevenlabs-api-key",
+            "ELEVENLABS_VOICE_ID": "your-elevenlabs-voice-id",
+            "PATH_TO_CODEVIDEO_CLI": "/path/to/your/codevideo-cli/binary",
         }
     }
     // ... other MCP servers
