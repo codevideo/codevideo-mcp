@@ -44,6 +44,52 @@ export const instructionsToCreateLessonActions = (additionalContext: string): st
     Use the MCP tool \`codevideo_get_action_names\` to get the most updated list of all the actions available. You can also use the MCP tool \`codevideo_get_example_actions_array_by_keyword\`  \`codevideo_get_example_lessons_by_keyword\` to get verified, accurate, and correct lessons created by humans.
     
     Also VERY IMPORTANT to note, while most 'value' properties are corresponding strings, things like \`editor-enter\` are considered "Repeatable" properties, which MUST have a string number as the 'value' property, which is 99% of the time the string "1", but can be any positive integer, representing the number of times to repeat. An action can be checked for repeatability with the MCP tool \`codevideo_is_repeatable_action\`. To be stressed again: the "value" property of any codevideo action CANNOT be left empty!
+    
+    Please do not use \`file-explorer-create-file\` directly, instead use the following flow:
+
+    \`\`\`json
+    {
+    "name": "mouse-move-file-explorer",
+    "value": "1"
+   },
+   {
+      "name": "mouse-right-click",
+      "value": "1"
+   },
+   {
+      "name": "mouse-move-file-explorer-context-menu-new-file",
+      "value": "1"
+   },
+   {
+      "name": "mouse-left-click",
+      "value": "1"
+   },
+   {
+      "name": "file-explorer-type-new-file-input",
+      "value": "my_file.py"
+   },
+   {
+      "name": "file-explorer-enter-new-file-input",
+      "value": "1"
+   },
+   \`\`\`
+
+   Likewise, for opening existing files, use the following flow:
+
+   \`\`\`json
+   {
+      "name": "mouse-move-file-explorer-file",
+      "value": "my_file.py"
+   },
+   {
+      "name": "file-explorer-open-file",
+      "value": "1"
+   }
+   \`\`\`     
+
+   Also, you SHOULD NEVER use \`file-explorer-set-working-directory\` or \`file-explorer-set-file-contents\`! These are ONLY FOR INTERNAL USAGE!
+
+   STYLE AND PACING: As much as possible, try to incorporate speech actions during writing of code. We shouldn't have super long blocks of just typing code. Also, for speaking actions themselves, if they are longer than 2-3 sentences, they should be broken into multiple speak actions. Think about the flow of time as well. For example, if you say you are going to save the file, the editor-save action should always come after that speak action. If you say you are going to open up a terminal, that speak action should be BEFORE the terminal-open action. REGARDLESS OF ORDER, ONLY USE THE \`author-speak-before\` ACTION.
 
     WORKFLOW TIP: After creating actions, you can store them using \`codevideo_set_current_actions\` and then use other tools like \`codevideo_validate_actions\`, \`codevideo_make_video_from_actions\`, \`codevideo_make_blog_post\`, etc. without needing to re-specify the actions each time. These tools will automatically retrieve the stored actions if no actions parameter is provided.
 

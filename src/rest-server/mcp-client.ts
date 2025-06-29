@@ -7,7 +7,7 @@ import { instructionsToCreateLessonVideo } from "../prompts/instructions_to_crea
 import { instructionsToTranslateActions } from "../prompts/instructions_to_translate_actions";
 import { makeVideoFromActions } from "../tools/make_video_from_actions";
 import { makeVideoFromLesson } from "../tools/make_video_from_lesson";
-import { makeBlogPost } from "../tools/make_blog_post";
+import { makeMarkdownFromActions } from "../tools/make_markdown_from_actions";
 import { makeHTMLWebPage } from "../tools/make_html_web_page";
 import { createCourseWithInitialMetadata } from "../tools/create_course_with_initial_metadata";
 import { addLessonToCourse } from "../tools/add_lesson_to_course";
@@ -186,7 +186,7 @@ export class McpClient {
           break;
           
         case 'codevideo_make_blog_post':
-          result = makeBlogPost(toolCall.arguments.actions);
+          result = makeMarkdownFromActions(toolCall.arguments.actions);
           break;
           
         case 'codevideo_make_html_web_page':

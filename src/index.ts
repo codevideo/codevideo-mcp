@@ -25,7 +25,8 @@ import { setCurrentActions } from "./tools/set_current_actions";
 import { getCurrentActions } from "./tools/get_current_actions";
 import { setCurrentLesson } from "./tools/set_current_lesson";
 import { getCurrentLesson } from "./tools/get_current_lesson";
-import { makeBlogPost } from "./tools/make_blog_post";
+import { makeMarkdownFromActions } from "./tools/make_markdown_from_actions";
+import { makeMarkdownFromLesson } from "./tools/make_markdown_from_lesson";
 import { makeHTMLWebPage } from "./tools/make_html_web_page";
 import { makeVideoFromActions } from "./tools/make_video_from_actions";
 import { makeVideoFromLesson } from "./tools/make_video_from_lesson";
@@ -364,8 +365,8 @@ server.tool(
 );
 
 server.tool(
-    "codevideo_make_blog_post",
-    "Generate a markdown blog post from CodeVideo actions. Pass actions array OR use previously stored actions from codevideo_set_current_actions (recommended workflow).",
+    "codevideo_make_markdown_from_actions",
+    "Generate a markdown blog post from CodeVideo actions array. Pass actions array OR use previously stored actions from codevideo_set_current_actions (recommended workflow).",
     {
         actions: z.array(ActionSchema).optional().describe("Array of CodeVideo actions. Optional if actions were previously stored with codevideo_set_current_actions")
     },
@@ -376,7 +377,26 @@ server.tool(
         return {
             content: [{
                 type: "text",
-                text: makeBlogPost(typedActions)
+                text: makeMarkdownFromActions(typedActions)
+            }]
+        };
+    }
+);
+
+server.tool(
+    "codevideo_make_markdown_from_lesson",
+    "Generate a markdown blog post from a complete lesson object. Pass a lesson object OR use previously stored lesson from lesson management tools. This extracts the actions from the lesson and generates markdown.",
+    {
+        lesson: LessonSchema.optional().describe("Complete lesson object. Optional if lesson was previously stored with lesson management tools")
+    },
+    async ({ lesson }) => {
+        // Cast the lesson to ILesson if provided
+        const typedLesson = lesson as ILesson | undefined;
+
+        return {
+            content: [{
+                type: "text",
+                text: makeMarkdownFromLesson(typedLesson)
             }]
         };
     }

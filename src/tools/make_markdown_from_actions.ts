@@ -3,7 +3,7 @@ import { generateMarkdownStringFromActions } from '@fullstackcraftllc/codevideo-
 import { getCurrentActionsOrThrow } from "./get_current_actions";
 
 // calls the markdown generator from the codevideo-exporters package
-export const makeBlogPost = (actions?: Array<IAction>): string => {
+export const makeMarkdownFromActions = (actions?: Array<IAction>): string => {
     // Use provided actions or retrieve from storage
     const actionsToUse = actions || getCurrentActionsOrThrow();
     return generateMarkdownStringFromActions(actionsToUse);
