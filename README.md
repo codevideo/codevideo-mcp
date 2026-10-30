@@ -25,6 +25,14 @@ Validation:
 
 ## Usage with Claude Desktop
 
+The npm package installs the matching native CodeVideo CLI automatically. Video rendering also requires Chrome/Chromium and FFmpeg; validate the host first with:
+
+```shell
+npx @fullstackcraftllc/codevideo-cli doctor
+```
+
+If Chrome is not detected, run `npx @fullstackcraftllc/codevideo-cli install-browser`. `PATH_TO_CODEVIDEO_CLI` remains available as an optional override for local CLI builds.
+
 Simply drop the following into your `claude_desktop_config.json` file:
 
 ```json
@@ -37,14 +45,28 @@ Simply drop the following into your `claude_desktop_config.json` file:
             "@fullstackcraftllc/codevideo-mcp@latest"
         ],
         "env": {
-            "ELEVENLABS_API_KEY": "your-elevenlabs-api-key",
-            "ELEVENLABS_VOICE_ID": "your-elevenlabs-voice-id",
-            "PATH_TO_CODEVIDEO_CLI": "/path/to/your/codevideo-cli/binary",
+            "ELEVEN_LABS_API_KEY": "your-elevenlabs-api-key",
+            "ELEVEN_LABS_VOICE_ID": "your-elevenlabs-voice-id"
         }
     },
     // ... other MCP servers
 }
 ```
+
+## Usage with Codex
+
+Add the published MCP server to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.codevideo]
+command = "npx"
+args = ["-y", "@fullstackcraftllc/codevideo-mcp@1.0.4"]
+startup_timeout_sec = 60
+tool_timeout_sec = 1200
+env_vars = ["ELEVEN_LABS_API_KEY", "ELEVEN_LABS_VOICE_ID", "GEMINI_API_KEY"]
+```
+
+Restart Codex or open a new thread after changing MCP configuration.
 
 Be sure to restart Claude after modifying this config! 
 
@@ -79,9 +101,8 @@ Then, use the following JSON to run the local version on your Claude Desktop:
             "/path/to/your/clone/of/codevideo-mcp/src/index.ts"
         ],
         "env": {
-            "ELEVENLABS_API_KEY": "your-elevenlabs-api-key",
-            "ELEVENLABS_VOICE_ID": "your-elevenlabs-voice-id",
-            "PATH_TO_CODEVIDEO_CLI": "/path/to/your/codevideo-cli/binary",
+            "ELEVEN_LABS_API_KEY": "your-elevenlabs-api-key",
+            "ELEVEN_LABS_VOICE_ID": "your-elevenlabs-voice-id"
         }
     }
     // ... other MCP servers

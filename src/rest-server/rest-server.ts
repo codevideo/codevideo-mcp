@@ -9,6 +9,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { JobManager } from './job-manager';
 import { createMcpServer } from '../index';
 import { McpClient } from './mcp-client';
+import { AgentEndpoint } from './agent-endpoint';
 
 interface TaskResult {
   taskId: string;
@@ -41,6 +42,7 @@ class RestMcpServer {
   private jobManager: JobManager;
   private mcpServer: McpServer | null = null;
   private mcpClient: McpClient | null = null;
+  private agentEndpoint: AgentEndpoint | null = null;
   private tasks: Map<string, TaskResult> = new Map();
   private port: number;
 
@@ -65,7 +67,7 @@ class RestMcpServer {
     this.app.use(cors());
     this.app.use(express.json({ limit: '50mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-    
+
     // Request logging
     this.app.use((req: Request, res: Response, next) => {
       console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
@@ -77,11 +79,14 @@ class RestMcpServer {
     try {
       // Create the MCP server using your existing configuration
       this.mcpServer = createMcpServer();
-      
+
       // Create a minimal client to interact with the server
       this.mcpClient = new McpClient(this.mcpServer);
       await this.mcpClient.connect();
-      
+
+      // Initialize the agent endpoint
+      this.agentEndpoint = new AgentEndpoint(this.mcpClient, this.io);
+
       console.log('MCP Server initialized successfully');
     } catch (error) {
       console.error('Failed to initialize MCP server:', error);
@@ -91,8 +96,8 @@ class RestMcpServer {
   private setupRoutes() {
     // Health check
     this.app.get('/health', (req: Request, res: Response) => {
-      res.json({ 
-        status: 'healthy', 
+      res.json({
+        status: 'healthy',
         timestamp: new Date().toISOString(),
         mcpServerReady: this.mcpServer !== null
       });
@@ -102,7 +107,7 @@ class RestMcpServer {
     this.app.post('/codevideo-mcp', async (req: Request, res: Response) => {
       try {
         const request: RestMcpRequest = req.body;
-        
+
         if (!request.prompt && !request.tool) {
           return res.status(400).json({
             error: 'Either prompt or tool is required'
@@ -230,7 +235,7 @@ class RestMcpServer {
       const status = req.query.status as string;
 
       let tasks = Array.from(this.tasks.values());
-      
+
       if (status) {
         tasks = tasks.filter(task => task.status === status);
       }
@@ -278,6 +283,65 @@ class RestMcpServer {
         });
       }
     });
+
+    // === NEW AGENT ENDPOINTS ===
+
+    // Agent endpoint - accepts natural language prompts and runs multi-step agent workflows
+    this.app.post('/codevideo-mcp/agent', async (req: Request, res: Response) => {
+      if (!this.agentEndpoint) {
+        return res.status(503).json({
+          error: 'Agent endpoint not initialized'
+        });
+      }
+      await this.agentEndpoint.handleAgentRequest(req, res);
+    });
+
+    // Get agent task status
+    this.app.get('/codevideo-mcp/agent/tasks/:taskId', (req: Request, res: Response) => {
+      if (!this.agentEndpoint) {
+        return res.status(503).json({
+          error: 'Agent endpoint not initialized'
+        });
+      }
+      this.agentEndpoint.getAgentTaskStatus(req, res);
+    });
+
+    // Stream agent task updates
+    this.app.get('/codevideo-mcp/agent/tasks/:taskId/stream', (req: Request, res: Response) => {
+      if (!this.agentEndpoint) {
+        return res.status(503).json({
+          error: 'Agent endpoint not initialized'
+        });
+      }
+      this.agentEndpoint.streamAgentTask(req, res);
+    });
+
+    // Cancel agent task
+    this.app.delete('/codevideo-mcp/agent/tasks/:taskId', (req: Request, res: Response) => {
+      const { taskId } = req.params;
+
+      if (!this.agentEndpoint) {
+        return res.status(503).json({
+          error: 'Agent endpoint not initialized'
+        });
+      }
+
+      const success = this.agentEndpoint.cancelTask(taskId);
+
+      if (!success) {
+        return res.status(409).json({
+          error: 'Task cannot be cancelled or not found'
+        });
+      }
+
+      res.json({
+        taskId,
+        status: 'cancelled',
+        message: 'Agent task cancelled successfully'
+      });
+    });
+
+    // === END AGENT ENDPOINTS ===
   }
 
   private setupWebSocket() {
@@ -290,9 +354,20 @@ class RestMcpServer {
         console.log(`Client ${socket.id} subscribed to task ${taskId}`);
       });
 
+      // Allow clients to subscribe to agent task updates
+      socket.on('subscribe-agent-task', (taskId: string) => {
+        socket.join(`agent-task-${taskId}`);
+        console.log(`Client ${socket.id} subscribed to agent task ${taskId}`);
+      });
+
       socket.on('unsubscribe-task', (taskId: string) => {
         socket.leave(`task-${taskId}`);
         console.log(`Client ${socket.id} unsubscribed from task ${taskId}`);
+      });
+
+      socket.on('unsubscribe-agent-task', (taskId: string) => {
+        socket.leave(`agent-task-${taskId}`);
+        console.log(`Client ${socket.id} unsubscribed from agent task ${taskId}`);
       });
 
       socket.on('disconnect', () => {
@@ -341,12 +416,12 @@ class RestMcpServer {
 
     } catch (error) {
       console.error(`Task ${taskId} failed:`, error);
-      
+
       task.status = 'failed';
       task.error = error instanceof Error ? error.message : 'Unknown error';
       task.updatedAt = new Date().toISOString();
       task.completedAt = new Date().toISOString();
-      
+
       this.notifyTaskUpdate(taskId, task);
     }
   }
@@ -364,7 +439,7 @@ class RestMcpServer {
 
     // Simple prompt analysis to determine what tool to use
     const lowerPrompt = prompt.toLowerCase();
-    
+
     if (lowerPrompt.includes('create') && lowerPrompt.includes('course')) {
       return this.processTool(taskId, 'codevideo_create_course_with_initial_metadata', {
         prompt,

@@ -12,7 +12,8 @@ export const makeHTMLWebPage = async (actions?: Array<IAction>): Promise<string>
     const actionsToUse = actions || getCurrentActionsOrThrow();
     
     // Generate the HTML content
-    const htmlContent = await generateHtmlStringFromActions(actionsToUse);
+    // (exporters >=0.0.10 takes markdown + optional html options; defaults are fine here)
+    const htmlContent = await generateHtmlStringFromActions(actionsToUse, {});
     
     // Create output file on desktop with timestamp
     const homeDir = os.homedir();

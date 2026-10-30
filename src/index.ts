@@ -1,15 +1,18 @@
 import dotenv from 'dotenv';
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import * as packageJson from '../package.json';
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { IAction, ICourse, ILesson } from "@fullstackcraftllc/codevideo-types";
+import { IAction, ICourse, ICourseSnapshot, ILesson, AllActionStrings, isRepeatableAction } from "@fullstackcraftllc/codevideo-types";
 
 // prompts
 import { instructionsToCreateACourse } from "./prompts/instructions_to_create_a_course";
 import { instructionsToCreateLessonActions } from "./prompts/instructions_to_create_lesson_actions";
 import { instructionsToCreateLessonVideo } from './prompts/instructions_to_create_lesson_video';
 import { instructionsToTranslateActions } from './prompts/instructions_to_translate_actions';
+import { instructionsToBuildCourseFromScratch } from "./prompts/instructions_to_build_course_from_scratch";
 
 // tools
 import { getFinalLessonSnapshot } from "./tools/get_final_lesson_snapshot";
@@ -32,6 +35,27 @@ import { makeVideoFromActions } from "./tools/make_video_from_actions";
 import { makeVideoFromLesson } from "./tools/make_video_from_lesson";
 import { validateActions } from "./tools/validate_actions";
 
+// course store tools (server-side state; snapshots stay out of the model's context)
+import {
+    createCourseTool,
+    addLessonTool,
+    setLessonActionsTool,
+    getLessonFileTreeTool,
+    getLessonFileTool,
+    compileLessonTool,
+    validateCourseTool,
+    getCourseStatusTool,
+    exportCourseTool,
+} from "./tools/courseTools";
+
+// phase 2: previews + gated video render
+import {
+    generateLessonPreviewTool,
+    generateCoursePreviewsTool,
+    renderLessonVideoTool,
+    renderCourseVideosTool,
+} from "./tools/renderTools";
+
 // resources
 import { getActionNames } from "./resources/get_action_names";
 import { getExampleActionsArrayByKeyword } from "./resources/get_example_actions_array_by_keyword";
@@ -45,9 +69,30 @@ const ActionSchema = z.object({
     value: z.string()
 });
 
-const CourseSnapshotSchema = z.object({
+// Strict variant for the new course-authoring entry point: rejects unknown action names and
+// empty values at the MCP boundary, so the model gets immediate feedback instead of finding
+// out only at validate time. The looser ActionSchema above is kept for the existing
+// single-lesson tools that already work well.
+const validActionNames = new Set<string>(AllActionStrings);
+const StrictActionSchema = z.object({
+    name: z.string().refine((name) => validActionNames.has(name), "unknown CodeVideo action name"),
+    value: z.string().min(1, "action 'value' must not be empty")
+}).refine(
+    (a) => !isRepeatableAction(a as IAction) || /^[0-9]+$/.test(a.value),
+    { message: "repeatable actions require a positive integer string value (usually \"1\")" }
+);
 
-});
+const CourseSnapshotSchema = z.custom((value) => {
+    if (!value || typeof value !== "object") return false;
+    const snapshot = value as Partial<ICourseSnapshot>;
+    return typeof snapshot.isUnsavedChangesDialogOpen === "boolean"
+        && typeof snapshot.unsavedFileName === "string"
+        && !!snapshot.fileExplorerSnapshot
+        && !!snapshot.editorSnapshot
+        && !!snapshot.terminalSnapshot
+        && !!snapshot.mouseSnapshot
+        && !!snapshot.authorSnapshot;
+}, "Invalid CodeVideo course snapshot");
 
 const LessonSchema = z.object({
     id: z.string(),
@@ -66,19 +111,24 @@ const CourseSchema = z.object({
     lessons: z.array(LessonSchema)
 });
 
+type ToolShape = Record<string, z.ZodTypeAny>;
+type ToolArguments<Shape extends ToolShape> = z.output<z.ZodObject<Shape>>;
+type TextToolResult = {
+    content: Array<{ type: "text"; text: string }>;
+    isError?: boolean;
+};
+type ToolHandler<Shape extends ToolShape> = (
+    args: ToolArguments<Shape>,
+) => TextToolResult | Promise<TextToolResult>;
+interface ToolRegistrar {
+    <Shape extends ToolShape>(name: string, shape: Shape, handler: ToolHandler<Shape>): void;
+    <Shape extends ToolShape>(name: string, description: string, shape: Shape, handler: ToolHandler<Shape>): void;
+}
+
 export function createMcpServer(): McpServer {
     const server = new McpServer({
         name: "codevideo-mcp",
         version: packageJson.version,
-        env: {
-            // preserve existing environment variables
-            ...Object.fromEntries(
-                Object.entries(process.env)
-                    .filter(([, value]) => value !== undefined)
-                    .map(([key, value]) => [key, value as string])
-            ),
-            MCP_TIMEOUT: String(1200000), // 20 min - needed for video creation waiting
-        }
     });
 
     setupMcpServerTools(server);
@@ -86,6 +136,7 @@ export function createMcpServer(): McpServer {
 }
 
 function setupMcpServerTools(server: McpServer): void {
+    const tool = server.tool.bind(server) as unknown as ToolRegistrar;
 
 // Commenting out prompts and resources that aren't showing up 
 // - does Claude just use them internally?
@@ -129,7 +180,7 @@ server.resource(
 );
 */
 
-server.tool(
+tool(
     "codevideo_instructions_to_create_a_course",
     {
         additionalContext: z.string()
@@ -144,7 +195,7 @@ server.tool(
     }
 )
 
-server.tool(
+tool(
     "codevideo_instructions_to_create_lesson_actions",
     {
         additionalContext: z.string()
@@ -159,7 +210,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_instructions_to_create_lesson_video",
     {
         additionalContext: z.string()
@@ -174,7 +225,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_instructions_to_translate_actions",
     "Generate translation instructions for CodeVideo actions. Pass actions array OR use previously stored actions from codevideo_set_current_actions (recommended workflow).",
     {
@@ -194,7 +245,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_get_empty_lesson_snapshot",
     {},
     async () => {
@@ -209,7 +260,7 @@ server.tool(
 
 
 
-server.tool(
+tool(
     "codevideo_create_course_with_initial_metadata",
     {
         id: z.string(),
@@ -227,7 +278,7 @@ server.tool(
     }
 )
 
-server.tool(
+tool(
     "codevideo_add_actions_to_lesson",
     {
         lesson: LessonSchema,
@@ -249,7 +300,7 @@ server.tool(
     }
 )
 
-server.tool(
+tool(
     "codevideo_get_final_lesson_snapshot",
     "Get the final state snapshot after applying CodeVideo actions. Pass actions array OR use previously stored actions from codevideo_set_current_actions (recommended workflow).",
     {
@@ -268,7 +319,7 @@ server.tool(
     }
 )
 
-server.tool(
+tool(
     "codevideo_add_lesson_to_course",
     {
         course: CourseSchema,
@@ -289,7 +340,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_get_action_names",
     {},
     async () => {
@@ -302,7 +353,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_get_example_actions_array_by_keyword",
     {
         keyword: z.string()
@@ -317,7 +368,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_get_example_lesson_by_keyword",
     {
         keyword: z.string()
@@ -332,7 +383,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_get_initial_lesson_state_from_local_repo",
     "Create an initial lesson state snapshot from a local repository/codebase directory. This captures the file structure and creates an empty lesson template ready for action recording.",
     {
@@ -348,7 +399,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_get_initial_lesson_state_from_github_repo",
     "Create an initial lesson state snapshot from a GitHub repository URL. This fetches the repository content, captures the file structure, and creates an empty lesson template ready for action recording.",
     {
@@ -364,7 +415,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_make_markdown_from_actions",
     "Generate a markdown blog post from CodeVideo actions array. Pass actions array OR use previously stored actions from codevideo_set_current_actions (recommended workflow).",
     {
@@ -383,7 +434,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_make_markdown_from_lesson",
     "Generate a markdown blog post from a complete lesson object. Pass a lesson object OR use previously stored lesson from lesson management tools. This extracts the actions from the lesson and generates markdown.",
     {
@@ -402,7 +453,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_make_html_web_page",
     "Generate an HTML web page from CodeVideo actions. Pass actions array OR use previously stored actions from codevideo_set_current_actions (recommended workflow).",
     {
@@ -421,7 +472,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_make_video_from_actions",
     "Generate a video from CodeVideo actions. Pass actions array OR use previously stored actions from codevideo_set_current_actions (recommended workflow).",
     {
@@ -434,6 +485,7 @@ server.tool(
         try {
             const result = await makeVideoFromActions(typedActions);
             return {
+                isError: !!result.error,
                 content: [{
                     type: "text",
                     text: JSON.stringify({
@@ -465,7 +517,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_make_video_from_lesson",
     "Generate a video from a complete lesson object. Pass a lesson object OR use previously stored lesson from lesson management tools. This is useful when you have a full lesson with snapshots rather than just actions.",
     {
@@ -478,6 +530,7 @@ server.tool(
         try {
             const result = await makeVideoFromLesson(typedLesson);
             return {
+                isError: !!result.error,
                 content: [{
                     type: "text",
                     text: JSON.stringify({
@@ -509,7 +562,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_validate_actions",
     {
         actions: z.array(ActionSchema).optional()
@@ -527,7 +580,7 @@ server.tool(
     }
 );
 
-server.tool(
+tool(
     "codevideo_is_repeatable_action",
     {
         action: ActionSchema
@@ -545,7 +598,7 @@ server.tool(
     }
 )
 
-server.tool(
+tool(
     "codevideo_critique_video_using_gemini",
     "Critique a generated video using Google Gemini AI. Pass actions array OR use previously stored actions from codevideo_set_current_actions (recommended workflow).",
     {
@@ -577,7 +630,7 @@ server.tool(
     }
 )
 
-server.tool(
+tool(
     "codevideo_set_current_actions",
     "Store actions in local SQLite database for reuse across multiple tool calls. Once set, other tools can be called without re-specifying actions.",
     {
@@ -596,7 +649,7 @@ server.tool(
     }
 )
 
-server.tool(
+tool(
     "codevideo_get_current_actions",
     "Retrieve the currently stored actions from local database. Use this to inspect what actions were previously set with codevideo_set_current_actions.",
     {},
@@ -620,7 +673,7 @@ server.tool(
     }
 )
 
-server.tool(
+tool(
     "codevideo_set_current_lesson",
     "Store a complete lesson object in local SQLite database for reuse across multiple tool calls. Once set, other tools can be called without re-specifying the lesson.",
     {
@@ -639,7 +692,7 @@ server.tool(
     }
 )
 
-server.tool(
+tool(
     "codevideo_get_current_lesson",
     "Retrieve the currently stored lesson from local database. Use this to inspect what lesson was previously set with codevideo_set_current_lesson.",
     {},
@@ -663,10 +716,158 @@ server.tool(
     }
 )
 
+// ===== Build-from-scratch course flow (server-side state; snapshots stay out of context) =====
+
+tool(
+    "codevideo_instructions_to_build_course_from_scratch",
+    "Get step-by-step instructions for building a COMPLETE multi-lesson 'build from scratch' course with the course-store tools (snapshots stay server-side). Use this before authoring a full course.",
+    { additionalContext: z.string().describe("What the course should teach / build") },
+    async ({ additionalContext }) => ({
+        content: [{ type: "text", text: instructionsToBuildCourseFromScratch(additionalContext) }]
+    })
+);
+
+tool(
+    "codevideo_create_course",
+    "Create a new course (server-side, returns a courseId). Snapshots and lesson state live in the MCP, not in your context.",
+    {
+        name: z.string(),
+        description: z.string().optional(),
+        primaryLanguage: z.string().optional(),
+        id: z.string().optional()
+    },
+    async ({ name, description, primaryLanguage, id }) => ({
+        content: [{ type: "text", text: createCourseTool({ name, description, primaryLanguage, id }) }]
+    })
+);
+
+tool(
+    "codevideo_add_lesson",
+    "Add a lesson to a course. By default it continues from the previous lesson's final state (chained server-side). Set mustCompile:false for slideshow/discussion/half-refactor lessons.",
+    {
+        courseId: z.string(),
+        name: z.string(),
+        description: z.string().optional(),
+        mustCompile: z.boolean().optional(),
+        continuesFromPrevious: z.boolean().optional()
+    },
+    async ({ courseId, name, description, mustCompile, continuesFromPrevious }) => ({
+        content: [{ type: "text", text: addLessonTool(courseId, { name, description, mustCompile, continuesFromPrevious }) }]
+    })
+);
+
+tool(
+    "codevideo_set_lesson_actions",
+    "Store a lesson's actions. The server recomputes the lesson's final snapshot and re-chains following lessons. Returns only a small ack (no snapshot).",
+    {
+        courseId: z.string(),
+        lessonId: z.string(),
+        actions: z.array(StrictActionSchema)
+    },
+    async ({ courseId, lessonId, actions }) => ({
+        content: [{ type: "text", text: setLessonActionsTool(courseId, lessonId, actions as IAction[]) }]
+    })
+);
+
+tool(
+    "codevideo_get_lesson_file_tree",
+    "List the file paths present at the END of a lesson (cheap; no file contents, no snapshot).",
+    { courseId: z.string(), lessonId: z.string() },
+    async ({ courseId, lessonId }) => ({
+        content: [{ type: "text", text: getLessonFileTreeTool(courseId, lessonId) }]
+    })
+);
+
+tool(
+    "codevideo_get_lesson_file",
+    "Get the contents of ONE file at the END of a lesson (cheap targeted read instead of dumping the whole snapshot).",
+    { courseId: z.string(), lessonId: z.string(), path: z.string() },
+    async ({ courseId, lessonId, path }) => ({
+        content: [{ type: "text", text: getLessonFileTool(courseId, lessonId, path) }]
+    })
+);
+
+tool(
+    "codevideo_compile_lesson",
+    "Compile the code at the end of a lesson and return only the structured errors. Use this to check a lesson builds before moving on.",
+    { courseId: z.string(), lessonId: z.string() },
+    async ({ courseId, lessonId }) => ({
+        content: [{ type: "text", text: await compileLessonTool(courseId, lessonId) }]
+    })
+);
+
+tool(
+    "codevideo_validate_course",
+    "Validate the whole course: per-lesson action validity, snapshot continuity, and compilation (for mustCompile lessons + the final lesson). Returns done:true when the course is complete.",
+    { courseId: z.string() },
+    async ({ courseId }) => ({
+        content: [{ type: "text", text: await validateCourseTool(courseId) }]
+    })
+);
+
+tool(
+    "codevideo_get_course_status",
+    "Resumable checkpoint view of a course: lessons, action counts, flags — without pulling any snapshot.",
+    { courseId: z.string() },
+    async ({ courseId }) => ({
+        content: [{ type: "text", text: getCourseStatusTool(courseId) }]
+    })
+);
+
+tool(
+    "codevideo_export_course",
+    "Export the full course JSON (ICourse with snapshots). Only use when you actually need the whole object, e.g. to render after validation passes.",
+    { courseId: z.string() },
+    async ({ courseId }) => ({
+        content: [{ type: "text", text: exportCourseTool(courseId) }]
+    })
+);
+
+// ===== Phase 2: previews + video render (gated behind validate_course) =====
+
+tool(
+    "codevideo_generate_lesson_preview",
+    "Generate a server-side HTML preview of a single lesson (open in a browser to eyeball it). Cheap; no video.",
+    { courseId: z.string(), lessonId: z.string() },
+    async ({ courseId, lessonId }) => ({
+        content: [{ type: "text", text: await generateLessonPreviewTool(courseId, lessonId) }]
+    })
+);
+
+tool(
+    "codevideo_generate_course_previews",
+    "Generate HTML previews for every lesson — GATED: only works once codevideo_validate_course returns done. Use for human review before rendering video.",
+    { courseId: z.string() },
+    async ({ courseId }) => ({
+        content: [{ type: "text", text: await generateCoursePreviewsTool(courseId) }]
+    })
+);
+
+tool(
+    "codevideo_render_lesson_video",
+    "Render ONE lesson to video via codevideo-cli (background). GATED: refuses until codevideo_validate_course returns done.",
+    { courseId: z.string(), lessonId: z.string() },
+    async ({ courseId, lessonId }) => ({
+        content: [{ type: "text", text: await renderLessonVideoTool(courseId, lessonId) }]
+    })
+);
+
+tool(
+    "codevideo_render_course_videos",
+    "Render every lesson to video via codevideo-cli (one background job per lesson). GATED: refuses until codevideo_validate_course returns done. Run only after a human approves the previews.",
+    { courseId: z.string() },
+    async ({ courseId }) => ({
+        content: [{ type: "text", text: await renderCourseVideosTool(courseId) }]
+    })
+);
+
 }
 
 // start the server when running directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+const invokedPath = process.argv[1];
+const isDirectExecution = invokedPath !== undefined
+    && fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(invokedPath);
+if (isDirectExecution) {
     const server = createMcpServer();
     const transport = new StdioServerTransport();
     (async () => {
