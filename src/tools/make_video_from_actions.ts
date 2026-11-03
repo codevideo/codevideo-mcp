@@ -1,57 +1,47 @@
-import os from "os";
-import fs from "fs";
-import path from "path";
 import { IAction } from "@fullstackcraftllc/codevideo-types";
 import { getCurrentActionsOrThrow } from "./get_current_actions";
-import { getCodeVideoCliRuntime } from "../utils/getBinaryPath";
-import { spawnDetached } from "../utils/spawnDetached";
+import { RenderOptions } from "../render/options";
+import { RenderJob } from "../render/jobs";
+import { estimatedSeconds, newVideoPath, queueRenders } from "../render/queue";
 
 export interface VideoResult {
     outputPath: string;
     stdout: string;
     stderr: string;
     error?: any;
+    jobId?: string;
 }
 
-export const makeVideoFromActions = async (actions?: IAction[]): Promise<VideoResult> => {
+/** Queues a video of actions (given, or the stored current actions) for the background render worker. */
+export const queueVideoFromActions = (
+    actions?: IAction[],
+    options: RenderOptions = {},
+    open = true
+): { job: RenderJob; estimatedSeconds: number } => {
+    const actionsToUse = actions || getCurrentActionsOrThrow();
+    const [job] = queueRenders([{
+        kind: "actions",
+        label: `${actionsToUse.length} actions`,
+        project: actionsToUse,
+        outputPath: newVideoPath(),
+        options,
+        open,
+        defaultLanguage: options.defaultLanguage ?? "typescript",
+    }]);
+    return { job, estimatedSeconds: estimatedSeconds(actionsToUse, options) };
+};
+
+// Kept for the REST server, which reports results in this shape.
+export const makeVideoFromActions = async (actions?: IAction[], options: RenderOptions = {}, open = true): Promise<VideoResult> => {
     try {
-        const runtime = getCodeVideoCliRuntime();
-        // Use provided actions or retrieve from storage
-        const actionsToUse = actions || getCurrentActionsOrThrow();
-        // Create JSON string directly
-        const actionsJson = JSON.stringify(actionsToUse);
-        
-        // Create output file on desktop with timestamp
-        const homeDir = os.homedir();
-        const desktopDir = process.env.CODEVIDEO_OUTPUT_DIR || path.join(homeDir, 'Desktop');
-        fs.mkdirSync(desktopDir, { recursive: true });
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const outputFile = path.join(desktopDir, `codevideo-${timestamp}.mp4`);
-        
-        // Fire-and-forget: Start the video generation process in the background
-        await spawnDetached(
-            runtime.binaryPath,
-            ['-p', actionsJson, '-o', outputFile, '--open'],
-            {
-                cwd: process.cwd(),
-                env: runtime.env,
-            }
-        );
-        
-        // Return immediately with status message
+        const { job } = queueVideoFromActions(actions, options, open);
         return {
-            outputPath: outputFile,
-            stdout: `Video generation job with ${actionsToUse.length} actions has started in the background via the codevideo-cli command. MP4 file path: ${outputFile}. It should open automatically as soon as it is done being rendered - this could take a while depending on how many actions there are.`,
-            stderr: ''
+            outputPath: job.outputPath,
+            jobId: job.id,
+            stdout: `Video queued as render job ${job.id}; it renders in the background to ${job.outputPath}.`,
+            stderr: "",
         };
     } catch (error: any) {
-        console.error('Error starting video generation:', error);
-        
-        return {
-            outputPath: '',
-            stdout: '',
-            stderr: `Failed to start video generation: ${error.message}`,
-            error
-        };
+        return { outputPath: "", stdout: "", stderr: `Failed to queue the video: ${error.message}`, error };
     }
 };

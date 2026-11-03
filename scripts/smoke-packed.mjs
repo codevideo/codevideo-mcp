@@ -12,7 +12,9 @@ const cliPackDir = process.env.CODEVIDEO_CLI_PACK_DIR
   ? path.resolve(process.env.CODEVIDEO_CLI_PACK_DIR)
   : path.resolve("../codevideo-cli/npm/dist/npm");
 const platform = `${process.platform}-${process.arch}`;
-const cliVersion = manifest.dependencies["@fullstackcraftllc/codevideo-cli"];
+// The dependency is a range (~0.0.13); local CLI tarballs are named by the bare version.
+const cliRange = manifest.dependencies["@fullstackcraftllc/codevideo-cli"];
+const cliVersion = cliRange.replace(/^[~^]/, "");
 
 function run(command, args, cwd) {
   const result = spawnSync(command, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -27,7 +29,7 @@ try {
   const platformTarball = path.join(cliPackDir, `fullstackcraftllc-codevideo-cli-${platform}-${cliVersion}.tgz`);
   const installSpecs = fs.existsSync(wrapperTarball) && fs.existsSync(platformTarball)
     ? [wrapperTarball, platformTarball, mcpTarball]
-    : [`@fullstackcraftllc/codevideo-cli@${cliVersion}`, mcpTarball];
+    : [`@fullstackcraftllc/codevideo-cli@${cliRange}`, mcpTarball];
 
   run("npm", ["init", "-y"], temp);
   run("npm", ["install", "--ignore-scripts", "--package-lock=false", ...installSpecs], temp);
@@ -42,7 +44,9 @@ try {
     "bin",
     process.platform === "win32" ? "codevideo-cli.exe" : "codevideo-cli",
   );
-  assert.match(run(cliBinary, ["--version"], temp), /CodeVideo CLI v0\.0\.7/);
+  const cliOutput = run(cliBinary, ["--version"], temp);
+  const installedCli = /CodeVideo CLI v0\.0\.(\d+)/.exec(cliOutput);
+  assert.ok(installedCli && Number(installedCli[1]) >= Number(cliVersion.split(".")[2]), `Unexpected CLI version: ${cliOutput}`);
 
   const home = path.join(temp, "home");
   fs.mkdirSync(home);
@@ -51,7 +55,7 @@ try {
     command: process.execPath,
     args: [path.join(installedScope, "codevideo-mcp", "dist", "index.js")],
     cwd: temp,
-    env: { ...process.env, HOME: home },
+    env: { ...process.env, HOME: home, USERPROFILE: home },
     stderr: "pipe",
   });
   let serverStderr = "";

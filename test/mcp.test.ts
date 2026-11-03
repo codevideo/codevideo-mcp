@@ -7,23 +7,17 @@ import { execFileSync } from "node:child_process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { getCodeVideoCliRuntime } from "../src/utils/getBinaryPath";
+import { homeEnv, parseText } from "./helpers";
 
-const parseText = (result: any) => {
-    const text = result.content[0].text;
-    try {
-        return JSON.parse(text);
-    } catch (error) {
-        throw new Error(`Expected JSON tool response, received: ${text}`, { cause: error });
-    }
-};
-
-test("npm CLI resolver selects a working 0.0.7 binary", () => {
+test("npm CLI resolver selects a working binary, 0.0.13 or newer", () => {
     const runtime = getCodeVideoCliRuntime();
     const output = execFileSync(runtime.binaryPath, ["--version"], {
         env: runtime.env,
         encoding: "utf8",
     });
-    assert.match(output, /CodeVideo CLI v0\.0\.7/);
+    const version = /CodeVideo CLI v0\.0\.(\d+)/.exec(output);
+    assert.ok(version, output);
+    assert.ok(Number(version[1]) >= 13, `CLI 0.0.${version[1]} is older than 0.0.13`);
 });
 
 test("MCP exposes tools and rejects an empty lesson as complete", async () => {
@@ -33,7 +27,7 @@ test("MCP exposes tools and rejects an empty lesson as complete", async () => {
         command: process.execPath,
         args: ["--import", "tsx", "src/index.ts"],
         cwd: process.cwd(),
-        env: { ...process.env, HOME: home },
+        env: { ...process.env, ...homeEnv(home) },
         stderr: "pipe",
     });
 
@@ -48,7 +42,7 @@ test("MCP exposes tools and rejects an empty lesson as complete", async () => {
         }));
         const lesson = parseText(await client.callTool({
             name: "codevideo_add_lesson",
-            arguments: { courseId: course.courseId, name: "Empty lesson" },
+            arguments: { courseId: course.courseId, name: "Empty lesson", description: "A lesson with no actions yet." },
         }));
         const validation = parseText(await client.callTool({
             name: "codevideo_validate_course",

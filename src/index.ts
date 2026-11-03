@@ -31,8 +31,8 @@ import { getCurrentLesson } from "./tools/get_current_lesson";
 import { makeMarkdownFromActions } from "./tools/make_markdown_from_actions";
 import { makeMarkdownFromLesson } from "./tools/make_markdown_from_lesson";
 import { makeHTMLWebPage } from "./tools/make_html_web_page";
-import { makeVideoFromActions } from "./tools/make_video_from_actions";
-import { makeVideoFromLesson } from "./tools/make_video_from_lesson";
+import { queueVideoFromActions } from "./tools/make_video_from_actions";
+import { queueVideoFromLesson } from "./tools/make_video_from_lesson";
 import { validateActions } from "./tools/validate_actions";
 
 // course store tools (server-side state; snapshots stay out of the model's context)
@@ -46,6 +46,8 @@ import {
     validateCourseTool,
     getCourseStatusTool,
     exportCourseTool,
+    editLessonActionsTool,
+    getLessonActionsTool,
 } from "./tools/courseTools";
 
 // phase 2: previews + gated video render
@@ -55,6 +57,12 @@ import {
     renderLessonVideoTool,
     renderCourseVideosTool,
 } from "./tools/renderTools";
+
+// render jobs: a queue in the shared database, drained by a background worker
+import { RenderOptions, RenderOptionsSchema } from "./render/options";
+import { describeJob, describeJobById } from "./render/queue";
+import { listJobs, requestCancel } from "./render/jobs";
+import { runWorker } from "./render/worker";
 
 // resources
 import { getActionNames } from "./resources/get_action_names";
@@ -109,6 +117,26 @@ const CourseSchema = z.object({
     description: z.string(),
     primaryLanguage: z.string(),
     lessons: z.array(LessonSchema)
+});
+
+// Every render tool takes the same options and an `open` switch.
+const RenderOptionsParam = RenderOptionsSchema.optional()
+    .describe("Render options: orientation, IDE layout (theme, font size, which panes and the cursor are visible), pacing, voice and render mode.");
+const openParam = (whenOmitted: boolean) => z.boolean().optional()
+    .describe(`Open the finished video in the default player. Defaults to ${whenOmitted}.`);
+
+const QUEUED_MESSAGE = "Queued. It renders in the background, even if this client closes; check it with codevideo_get_render_job.";
+
+const jobReply = (result: { job: Parameters<typeof describeJob>[0]; estimatedSeconds: number }): TextToolResult => ({
+    content: [{
+        type: "text",
+        text: JSON.stringify({ ...describeJob(result.job), estimatedSeconds: result.estimatedSeconds, message: QUEUED_MESSAGE }, null, 2)
+    }]
+});
+
+const errorReply = (prefix: string, error: unknown): TextToolResult => ({
+    isError: true,
+    content: [{ type: "text", text: `${prefix}: ${error instanceof Error ? error.message : String(error)}` }]
 });
 
 type ToolShape = Record<string, z.ZodTypeAny>;
@@ -342,6 +370,7 @@ tool(
 
 tool(
     "codevideo_get_action_names",
+    "Every CodeVideo action, one per line: what it does and what its value takes. Check the rows for the actions you plan to use.",
     {},
     async () => {
         return {
@@ -474,96 +503,41 @@ tool(
 
 tool(
     "codevideo_make_video_from_actions",
-    "Generate a video from CodeVideo actions. Pass actions array OR use previously stored actions from codevideo_set_current_actions (recommended workflow).",
+    "Render a video from CodeVideo actions: pass actions, or omit them to use the ones stored with codevideo_set_current_actions. Queues a background render job and returns its jobId at once; follow it with codevideo_get_render_job.",
     {
-        actions: z.array(ActionSchema).optional().describe("Array of CodeVideo actions. Optional if actions were previously stored with codevideo_set_current_actions")
+        actions: z.array(ActionSchema).optional().describe("Array of CodeVideo actions. Optional if actions were previously stored with codevideo_set_current_actions"),
+        options: RenderOptionsParam,
+        open: openParam(true),
     },
-    async ({ actions }) => {
-        // Cast the actions to IAction if provided
-        const typedActions = actions as IAction[] | undefined;
-
+    async ({ actions, options, open }) => {
         try {
-            const result = await makeVideoFromActions(typedActions);
-            return {
-                isError: !!result.error,
-                content: [{
-                    type: "text",
-                    text: JSON.stringify({
-                        outputPath: result.outputPath,
-                        stdout: result.stdout,
-                        stderr: result.stderr
-                    }, null, 2)
-                }]
-            };
-        } catch (error: any) {
-            console.error('Error making video:', error);
-            // If the error has the VideoResult structure
-            if (error && typeof error === 'object' && 'stdout' in error && 'stderr' in error) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: `Error creating video: ${error.error?.message || String(error.error)}\nstdout: ${error.stdout}\nstderr: ${error.stderr}`
-                    }]
-                };
-            }
-            // Fall back to simple error message
-            return {
-                content: [{
-                    type: "text",
-                    text: `Error creating video: ${error?.message || String(error)}`
-                }]
-            };
+            return jobReply(queueVideoFromActions(actions as IAction[] | undefined, (options ?? {}) as RenderOptions, open ?? true));
+        } catch (error) {
+            return errorReply("Couldn't queue the video", error);
         }
     }
 );
 
 tool(
     "codevideo_make_video_from_lesson",
-    "Generate a video from a complete lesson object. Pass a lesson object OR use previously stored lesson from lesson management tools. This is useful when you have a full lesson with snapshots rather than just actions.",
+    "Render a video from a complete lesson object: pass the lesson, or omit it to use the one stored with codevideo_set_current_lesson. Queues a background render job and returns its jobId at once; follow it with codevideo_get_render_job. For lessons in a stored course, use codevideo_render_lesson_video instead.",
     {
-        lesson: LessonSchema.optional().describe("Complete lesson object with snapshots. Optional if lesson was previously stored with lesson management tools")
+        lesson: LessonSchema.optional().describe("Complete lesson object with snapshots. Optional if lesson was previously stored with lesson management tools"),
+        options: RenderOptionsParam,
+        open: openParam(true),
     },
-    async ({ lesson }) => {
-        // Cast the lesson to ILesson if provided
-        const typedLesson = lesson as ILesson | undefined;
-
+    async ({ lesson, options, open }) => {
         try {
-            const result = await makeVideoFromLesson(typedLesson);
-            return {
-                isError: !!result.error,
-                content: [{
-                    type: "text",
-                    text: JSON.stringify({
-                        outputPath: result.outputPath,
-                        stdout: result.stdout,
-                        stderr: result.stderr
-                    }, null, 2)
-                }]
-            };
-        } catch (error: any) {
-            console.error('Error making video from lesson:', error);
-            // If the error has the VideoResult structure
-            if (error && typeof error === 'object' && 'stdout' in error && 'stderr' in error) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: `Error creating video from lesson: ${error.error?.message || String(error.error)}\nstdout: ${error.stdout}\nstderr: ${error.stderr}`
-                    }]
-                };
-            }
-            // Fall back to simple error message
-            return {
-                content: [{
-                    type: "text",
-                    text: `Error creating video from lesson: ${error?.message || String(error)}`
-                }]
-            };
+            return jobReply(queueVideoFromLesson(lesson as ILesson | undefined, (options ?? {}) as RenderOptions, open ?? true));
+        } catch (error) {
+            return errorReply("Couldn't queue the video", error);
         }
     }
 );
 
 tool(
     "codevideo_validate_actions",
+    "Checks a list of actions: unknown names, values of the wrong kind, and actions lessons can't use, each with what to do instead.",
     {
         actions: z.array(ActionSchema).optional()
     },
@@ -632,7 +606,7 @@ tool(
 
 tool(
     "codevideo_set_current_actions",
-    "Store actions in local SQLite database for reuse across multiple tool calls. Once set, other tools can be called without re-specifying actions.",
+    "Legacy single-slot store: keep one actions array for later tool calls, so they can run without re-sending it. Every conversation shares this one slot. For courses or several lessons, use codevideo_create_course and the course tools, which keep work apart by id.",
     {
         actions: z.array(ActionSchema).describe("Array of CodeVideo actions to store for later use")
     },
@@ -651,7 +625,7 @@ tool(
 
 tool(
     "codevideo_get_current_actions",
-    "Retrieve the currently stored actions from local database. Use this to inspect what actions were previously set with codevideo_set_current_actions.",
+    "Legacy single-slot store: read back the actions stored with codevideo_set_current_actions (shared by every conversation).",
     {},
     async () => {
         const actions = getCurrentActions();
@@ -675,7 +649,7 @@ tool(
 
 tool(
     "codevideo_set_current_lesson",
-    "Store a complete lesson object in local SQLite database for reuse across multiple tool calls. Once set, other tools can be called without re-specifying the lesson.",
+    "Legacy single-slot store: keep one lesson object for later tool calls, so they can run without re-sending it. Every conversation shares this one slot. For courses or several lessons, use codevideo_create_course and the course tools, which keep work apart by id.",
     {
         lesson: LessonSchema.describe("Complete lesson object to store for later use")
     },
@@ -694,7 +668,7 @@ tool(
 
 tool(
     "codevideo_get_current_lesson",
-    "Retrieve the currently stored lesson from local database. Use this to inspect what lesson was previously set with codevideo_set_current_lesson.",
+    "Legacy single-slot store: read back the lesson stored with codevideo_set_current_lesson (shared by every conversation).",
     {},
     async () => {
         const lesson = getCurrentLesson();
@@ -743,11 +717,11 @@ tool(
 
 tool(
     "codevideo_add_lesson",
-    "Add a lesson to a course. By default it continues from the previous lesson's final state (chained server-side). Set mustCompile:false for slideshow/discussion/half-refactor lessons.",
+    "Add a lesson to a course. By default it continues from the previous lesson's final state (chained server-side). Set mustCompile:false for slideshow/discussion/half-refactor lessons. The reply includes the previous lesson's name and description, for the recap that opens this lesson.",
     {
         courseId: z.string(),
         name: z.string(),
-        description: z.string().optional(),
+        description: z.string().min(1, "describe the lesson in one sentence; the next lesson's recap is written from it"),
         mustCompile: z.boolean().optional(),
         continuesFromPrevious: z.boolean().optional()
     },
@@ -758,14 +732,53 @@ tool(
 
 tool(
     "codevideo_set_lesson_actions",
-    "Store a lesson's actions. The server recomputes the lesson's final snapshot and re-chains following lessons. Returns only a small ack (no snapshot).",
+    "Store a lesson's actions, replacing any it had. The server recomputes the lesson's final snapshot and re-chains following lessons. Returns only a small ack (no snapshot). To change part of a lesson later, use codevideo_edit_lesson_actions instead of sending every action again.",
     {
         courseId: z.string(),
         lessonId: z.string(),
         actions: z.array(StrictActionSchema)
     },
-    async ({ courseId, lessonId, actions }) => ({
-        content: [{ type: "text", text: setLessonActionsTool(courseId, lessonId, actions as IAction[]) }]
+    async ({ courseId, lessonId, actions }) => {
+        try {
+            return { content: [{ type: "text", text: setLessonActionsTool(courseId, lessonId, actions as IAction[]) }] };
+        } catch (error) {
+            return errorReply("Couldn't store the actions", error);
+        }
+    }
+);
+
+tool(
+    "codevideo_edit_lesson_actions",
+    "Change part of a lesson without re-sending it: each edit removes deleteCount actions at start and inserts the given ones there, like Array.splice. Edits apply in order (each start refers to the actions as the previous edits left them), all or nothing, with one snapshot recompute. Use codevideo_get_lesson_actions to find indices.",
+    {
+        courseId: z.string(),
+        lessonId: z.string(),
+        edits: z.array(z.object({
+            start: z.number().int().min(0).describe("Index of the first action to change"),
+            deleteCount: z.number().int().min(0).describe("How many actions to remove at start (0 to only insert)"),
+            insert: z.array(StrictActionSchema).default([]).describe("Actions to insert at start"),
+        })).min(1),
+    },
+    async ({ courseId, lessonId, edits }) => {
+        try {
+            return { content: [{ type: "text", text: editLessonActionsTool(courseId, lessonId, edits as { start: number; deleteCount: number; insert: IAction[] }[]) }] };
+        } catch (error) {
+            return errorReply("Couldn't apply the edits", error);
+        }
+    }
+);
+
+tool(
+    "codevideo_get_lesson_actions",
+    "Read part of a lesson's actions with their indices (default: the first 50), e.g. to find what to change with codevideo_edit_lesson_actions.",
+    {
+        courseId: z.string(),
+        lessonId: z.string(),
+        start: z.number().int().min(0).optional(),
+        limit: z.number().int().min(1).max(500).optional(),
+    },
+    async ({ courseId, lessonId, start, limit }) => ({
+        content: [{ type: "text", text: getLessonActionsTool(courseId, lessonId, start, limit) }]
     })
 );
 
@@ -807,7 +820,7 @@ tool(
 
 tool(
     "codevideo_get_course_status",
-    "Resumable checkpoint view of a course: lessons, action counts, flags — without pulling any snapshot.",
+    "Resumable checkpoint view of a course: lessons, action counts, estimated video length per lesson, flags — without pulling any snapshot.",
     { courseId: z.string() },
     async ({ courseId }) => ({
         content: [{ type: "text", text: getCourseStatusTool(courseId) }]
@@ -816,7 +829,7 @@ tool(
 
 tool(
     "codevideo_export_course",
-    "Export the full course JSON (ICourse with snapshots). Only use when you actually need the whole object, e.g. to render after validation passes.",
+    "Export the full course (ICourse with snapshots) to a JSON file under ~/.codevideo/exports and return its path. The course itself isn't returned, so it doesn't fill your context.",
     { courseId: z.string() },
     async ({ courseId }) => ({
         content: [{ type: "text", text: exportCourseTool(courseId) }]
@@ -845,20 +858,73 @@ tool(
 
 tool(
     "codevideo_render_lesson_video",
-    "Render ONE lesson to video via codevideo-cli (background). GATED: refuses until codevideo_validate_course returns done.",
-    { courseId: z.string(), lessonId: z.string() },
-    async ({ courseId, lessonId }) => ({
-        content: [{ type: "text", text: await renderLessonVideoTool(courseId, lessonId) }]
-    })
+    "Render ONE lesson of a stored course to video: queues a background render job and returns its jobId. GATED: refuses until codevideo_validate_course returns done.",
+    { courseId: z.string(), lessonId: z.string(), options: RenderOptionsParam, open: openParam(true) },
+    async ({ courseId, lessonId, options, open }) => {
+        try {
+            return { content: [{ type: "text", text: await renderLessonVideoTool(courseId, lessonId, (options ?? {}) as RenderOptions, open ?? true) }] };
+        } catch (error) {
+            return errorReply("Couldn't queue the video", error);
+        }
+    }
 );
 
 tool(
     "codevideo_render_course_videos",
-    "Render every lesson to video via codevideo-cli (one background job per lesson). GATED: refuses until codevideo_validate_course returns done. Run only after a human approves the previews.",
-    { courseId: z.string() },
-    async ({ courseId }) => ({
-        content: [{ type: "text", text: await renderCourseVideosTool(courseId) }]
+    "Render every lesson of a stored course to video: queues one background render job per lesson, run one at a time in lesson order. GATED: refuses until codevideo_validate_course returns done. Run only after a human approves the previews.",
+    { courseId: z.string(), options: RenderOptionsParam, open: openParam(false) },
+    async ({ courseId, options, open }) => {
+        try {
+            return { content: [{ type: "text", text: await renderCourseVideosTool(courseId, (options ?? {}) as RenderOptions, open ?? false) }] };
+        } catch (error) {
+            return errorReply("Couldn't queue the videos", error);
+        }
+    }
+);
+
+// ===== Render jobs =====
+
+tool(
+    "codevideo_get_render_job",
+    "Status of one render job: queued (with how many jobs are ahead), running (with the latest progress line), succeeded (the video exists at outputPath), failed (with the CLI's error), cancelled or interrupted. Includes the last lines of the CLI's log.",
+    { jobId: z.string() },
+    async ({ jobId }) => {
+        const job = describeJobById(jobId, true);
+        return job
+            ? { content: [{ type: "text", text: JSON.stringify(job, null, 2) }] }
+            : { isError: true, content: [{ type: "text", text: `No render job ${jobId}.` }] };
+    }
+);
+
+tool(
+    "codevideo_list_render_jobs",
+    "Recent render jobs, newest first (default 20), optionally for one course or in one status.",
+    {
+        courseId: z.string().optional(),
+        status: z.enum(["queued", "running", "succeeded", "failed", "cancelled", "interrupted"]).optional(),
+        limit: z.number().int().min(1).max(100).optional(),
+    },
+    async ({ courseId, status, limit }) => ({
+        content: [{ type: "text", text: JSON.stringify(listJobs({ courseId, status, limit }).map((job) => describeJob(job)), null, 2) }]
     })
+);
+
+tool(
+    "codevideo_cancel_render_job",
+    "Cancel one render job, or every unfinished render job of a course. Queued jobs are dropped; a running one is stopped along with its browser.",
+    { jobId: z.string().optional(), courseId: z.string().optional() },
+    async ({ jobId, courseId }) => {
+        if (!jobId === !courseId) {
+            return { isError: true, content: [{ type: "text", text: "Pass exactly one of jobId or courseId." }] };
+        }
+        const { cancelled, stopping } = requestCancel({ jobId, courseId });
+        return {
+            content: [{
+                type: "text",
+                text: JSON.stringify({ cancelled, stopping, message: stopping > 0 ? "Stopping the running job; it shows as cancelled within a few seconds." : "Done." }, null, 2)
+            }]
+        };
+    }
 );
 
 }
@@ -867,7 +933,16 @@ tool(
 const invokedPath = process.argv[1];
 const isDirectExecution = invokedPath !== undefined
     && fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(invokedPath);
-if (isDirectExecution) {
+if (isDirectExecution && process.argv.includes("--render-worker")) {
+    // The background render worker (src/render/worker.ts), started by the server.
+    runWorker().then(
+        () => process.exit(0),
+        (error) => {
+            console.error(error);
+            process.exit(1);
+        }
+    );
+} else if (isDirectExecution) {
     const server = createMcpServer();
     const transport = new StdioServerTransport();
     (async () => {

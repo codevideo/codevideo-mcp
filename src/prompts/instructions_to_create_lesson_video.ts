@@ -1,4 +1,5 @@
-import { AllActionStrings } from "@fullstackcraftllc/codevideo-types"
+import { actionReference } from "./actionReference"
+import { AUTHORING_RULES } from "./authoringRules";
 
 // this prompt describes how to make lesson actions in the CodeVideo framework
 export const instructionsToCreateLessonVideo = (additionalContext: string): string => {
@@ -33,17 +34,15 @@ export const instructionsToCreateLessonVideo = (additionalContext: string): stri
     | ExternalActions;
     \`\`\`
 
-    Here are all the action types you have to choose from:
+    Here is every action you can choose from, with what it does and what its value takes:
 
-    \`\`\`typescript
-    export const AllActionStrings = [
-        ${AllActionStrings.map((action) => `"${action}"`).join(",\n        ")}
-    ];
+    \`\`\`
+${actionReference()}
     \`\`\`
 
     When in doubt with these names, feel free to use the MCP tool \`codevideo_get_action_names\` to get the most updated list of all the actions available. You can also use the MCP tool \`codevideo_get_example_lesson\` to get verified, accurate, and correct lessons created by humans.
     
-    Also VERY IMPORTANT to note, while most 'value' properties are corresponding strings, things like \`editor-enter\` are considered "Repeatable" properties, which MUST have a string number as the 'value' property, which is 99% of the time the string "1", but can be any positive integer, representing the number of times to repeat. An action can be checked for repeatability with the MCP tool \`codevideo_is_repeatable_action\`. To be stressed again: the "value" property of any codevideo action CANNOT be left empty!
+    ${AUTHORING_RULES}
 
     LESSON MANAGEMENT: You can store complete lesson objects using \`codevideo_set_current_lesson\` and retrieve them with \`codevideo_get_current_lesson\`. This is particularly useful for the FULL LESSON OBJECT approach where you need to manage complete lessons with snapshots.
 

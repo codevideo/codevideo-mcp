@@ -3,16 +3,17 @@ import fs from "fs";
 import path from "path";
 import { ILesson } from "@fullstackcraftllc/codevideo-types";
 import { generateHtmlStringFromLesson } from "@fullstackcraftllc/codevideo-exporters";
-import { getLesson, listLessons, StoredLesson } from "../store/courseStore";
+import { getCourse, getLesson, listLessons, StoredLesson } from "../store/courseStore";
 import { validateCourse } from "./courseTools";
-import { getCodeVideoCliRuntime } from "../utils/getBinaryPath";
-import { spawnDetached } from "../utils/spawnDetached";
+import { JobSpec } from "../render/jobs";
+import { RenderOptions } from "../render/options";
+import { describeJob, estimatedSeconds, newVideoPath, queueRenders } from "../render/queue";
 
 // Phase 2: previews + video render, gated behind validation.
 // - Previews are server-side HTML (cheap, no browser needed in the MCP) for the
 //   human-in-the-loop "does this look right?" check before any expensive rendering.
-// - Video render spawns the codevideo-cli per lesson, ONLY once the course passes
-//   validate_course. (Real PNG/snapshot previews need a headless render step — best added
+// - Video renders are queued, one job per lesson, ONLY once the course passes
+//   validate_course; the background render worker runs them one at a time. (Real PNG/snapshot previews need a headless render step — best added
 //   as a `--screenshot` mode on the CLI, which already drives a browser. See README/notes.)
 
 const ok = (data: unknown): string => JSON.stringify(data, null, 2);
@@ -64,40 +65,53 @@ export const generateCoursePreviewsTool = async (courseId: string): Promise<stri
     });
 };
 
-// ---------- video render (gated; spawns codevideo-cli per lesson) ----------
+// ---------- video render (gated; queued for the background render worker) ----------
 
-const spawnLessonVideo = async (lesson: ILesson): Promise<string> => {
-    const runtime = getCodeVideoCliRuntime();
-    const desktopDir = process.env.CODEVIDEO_OUTPUT_DIR || path.join(os.homedir(), "Desktop");
-    fs.mkdirSync(desktopDir, { recursive: true });
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const safeName = (lesson.name || "lesson").replace(/[^a-z0-9-_]+/gi, "_").slice(0, 40) || "lesson";
-    const outputFile = path.join(desktopDir, `codevideo-${safeName}-${timestamp}.mp4`);
-    await spawnDetached(runtime.binaryPath, ["-p", JSON.stringify(lesson), "-o", outputFile], {
-        cwd: process.cwd(),
-        env: runtime.env,
+const lessonSpec = (course: { id: string; primaryLanguage: string }, l: StoredLesson, options: RenderOptions, open: boolean): JobSpec => ({
+    kind: "course-lesson",
+    courseId: course.id,
+    lessonId: l.id,
+    label: l.name || "lesson",
+    project: toILesson(l),
+    outputPath: newVideoPath(l.name || "lesson"),
+    options,
+    open,
+    defaultLanguage: options.defaultLanguage ?? (course.primaryLanguage || "typescript"),
+});
+
+export const renderLessonVideoTool = async (courseId: string, lessonId: string, options: RenderOptions = {}, open = true): Promise<string> => {
+    const validation = await validateCourse(courseId);
+    if (!validation.done) {
+        return ok({ ok: false, gated: true, message: "No video until the course passes validation. Fix the course first.", reasons: validation.reasons });
+    }
+    const course = getCourse(courseId);
+    const lesson = getLesson(courseId, lessonId);
+    const [job] = queueRenders([lessonSpec(course, lesson, options, open)]);
+    return ok({
+        ok: true,
+        ...describeJob(job),
+        estimatedSeconds: estimatedSeconds(lesson.actions, options),
+        message: "Queued. It renders in the background; check it with codevideo_get_render_job.",
     });
-    return outputFile;
 };
 
-export const renderLessonVideoTool = async (courseId: string, lessonId: string): Promise<string> => {
+export const renderCourseVideosTool = async (courseId: string, options: RenderOptions = {}, open = false): Promise<string> => {
     const validation = await validateCourse(courseId);
     if (!validation.done) {
         return ok({ ok: false, gated: true, message: "No video until the course passes validation. Fix the course first.", reasons: validation.reasons });
     }
-    const outputPath = await spawnLessonVideo(toILesson(getLesson(courseId, lessonId)));
-    return ok({ ok: true, lessonId, outputPath, message: `Video render started in the background: ${outputPath}` });
-};
-
-export const renderCourseVideosTool = async (courseId: string): Promise<string> => {
-    const validation = await validateCourse(courseId);
-    if (!validation.done) {
-        return ok({ ok: false, gated: true, message: "No video until the course passes validation. Fix the course first.", reasons: validation.reasons });
-    }
-    const jobs = await Promise.all(listLessons(courseId).map(async (l) => ({
-        lessonId: l.id,
-        name: l.name,
-        outputPath: await spawnLessonVideo(toILesson(l)),
-    })));
-    return ok({ ok: true, courseId, jobs, message: `Started ${jobs.length} background video render jobs (one per lesson).` });
+    const course = getCourse(courseId);
+    const jobs = queueRenders(course.lessons.map((l) => lessonSpec(course, l, options, open)));
+    return ok({
+        ok: true,
+        courseId,
+        jobs: jobs.map((job, i) => ({
+            jobId: job.id,
+            lessonId: job.lessonId,
+            label: job.label,
+            outputPath: job.outputPath,
+            estimatedSeconds: estimatedSeconds(course.lessons[i].actions, options),
+        })),
+        message: `Queued ${jobs.length} lesson video(s). They render one at a time in the background; check them with codevideo_list_render_jobs({ courseId }).`,
+    });
 };

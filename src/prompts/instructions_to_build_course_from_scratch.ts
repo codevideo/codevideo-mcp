@@ -1,3 +1,5 @@
+import { AUTHORING_RULES } from "./authoringRules";
+
 // Drives a calling LLM (Claude Code, Codex, etc.) through building a full, multi-lesson
 // "build from scratch" CodeVideo course using the server-side course store tools — so
 // snapshots never round-trip through the model's context and the build stays reliable.
@@ -12,28 +14,20 @@ THE LOOP:
 2. codevideo_create_course(name, description, primaryLanguage) -> returns courseId. Hold onto it.
 3. For each lesson, in order:
    a. codevideo_add_lesson(courseId, { name, description, mustCompile, continuesFromPrevious: true }).
+      - description is required: one sentence on what the lesson teaches. The next lesson's opening recap is written from it, and the reply gives you the previous lesson's.
       - Set mustCompile: false for pure slideshow/discussion lessons or deliberate half-refactors where the code is NOT expected to compile yet.
       - Set mustCompile: true (the default) for any lesson that ends with working code.
       - The FINAL lesson must be mustCompile: true — all code must work by the end of the course.
    b. Author the actions array for this lesson. Build on the previous lesson's ending state (it is already the starting state of this lesson — you don't pass it in). If you need to know what exists, use codevideo_get_lesson_file_tree, and codevideo_get_lesson_file for a specific file's current contents — never dump everything.
    c. codevideo_set_lesson_actions(courseId, lessonId, actions). The server recomputes the lesson's final state.
-   d. If this lesson is mustCompile, codevideo_compile_lesson(courseId, lessonId). If there are errors, fix the actions and repeat (c)-(d) until it compiles clean. (If the compile tool reports "pending", continue — compilation will be enforced once available.)
+   d. If this lesson is mustCompile, codevideo_compile_lesson(courseId, lessonId). If there are errors, fix just the actions involved with codevideo_edit_lesson_actions (find indices with codevideo_get_lesson_actions; don't re-send the whole lesson) and repeat (d) until it compiles clean. (If the compile tool reports "pending", continue — compilation will be enforced once available.)
 4. When all lessons are authored: codevideo_validate_course(courseId). It returns "done": true only when every lesson's actions are valid, every lesson follows cleanly from the last, every mustCompile lesson compiles, and the final lesson compiles clean. If "done" is false, read "reasons" and the per-lesson results, fix, and re-validate.
 5. Use codevideo_get_course_status(courseId) at any time to see what's authored without pulling snapshots.
 
 HARD RULE — NO VIDEO DURING AUTHORING:
-For a full course, do NOT generate any video until codevideo_validate_course returns done: true. Rendering is the expensive final step. After validation passes, previews (a few PNG snapshots per lesson) and final video are a separate, human-approved step — do not interleave them with authoring.
+For a full course, do NOT generate any video until codevideo_validate_course returns done: true. Rendering is the expensive final step. After validation passes, previews (codevideo_generate_course_previews: an HTML page per lesson) and the final videos (codevideo_render_course_videos: background render jobs, one lesson at a time; follow them with codevideo_list_render_jobs) are a separate, human-approved step — do not interleave them with authoring.
 
-ACTION STYLE AND PACING (this is what makes lessons clear):
-- This JSON array is always an array of simple IAction objects: { name: AllActions, value: string }. Use codevideo_get_action_names for the current list, and codevideo_get_example_actions_array_by_keyword / codevideo_get_example_lessons_by_keyword for verified human-made examples.
-- The "value" of any action is NEVER empty. Repeatable actions (e.g. editor-enter) take a numeric STRING value, usually "1"; check with codevideo_is_repeatable_action.
-- Interleave speech with typing — no long silent blocks of code. Narrate the WHY before you write, and keep individual speak actions to 2-3 sentences; break longer narration into multiple author-speak-before actions.
-- Mind the flow of time: speak about saving BEFORE the editor-save; speak about opening a terminal BEFORE terminal-open. REGARDLESS OF ORDER, only ever use the author-speak-before speaking action.
-- To create a file, use the mouse flow: mouse-move-file-explorer "1" -> mouse-right-click "1" -> mouse-move-file-explorer-context-menu-new-file "1" -> mouse-left-click "1" -> file-explorer-type-new-file-input "<filename>" -> file-explorer-enter-new-file-input "1". Do not use file-explorer-create-file directly.
-- A file you just created is ALREADY open in the editor — type into it immediately with editor-type; do NOT reopen it. Likewise, when a lesson continues from the previous one, the file you last edited is already the active editor.
-- To open a DIFFERENT existing file: mouse-move-file-explorer-file "<filename>" -> file-explorer-open-file "<filename>". IMPORTANT: file-explorer-open-file's value is the FILENAME, not "1" — using "1" opens a stray editor and your typing is lost.
-- editor-type's value is the literal text to insert (including newlines). Never use file-explorer-set-working-directory or file-explorer-set-file-contents (internal only).
-- Begin each lesson with a short author-speak-before that frames the concept, and end with a brief summary author-speak-before.
+${AUTHORING_RULES}
 
 Now build the course described here:
 

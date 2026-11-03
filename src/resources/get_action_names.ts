@@ -1,8 +1,9 @@
-import { AllActionStrings } from '@fullstackcraftllc/codevideo-types';
+import { actionReference } from '../prompts/actionReference';
 
 /**
- * Returns all action names exported by the codevideo-types package, joined by commas.
+ * Returns every action from the codevideo-types package with what it does and
+ * what its value takes, one per line.
  */
 export const getActionNames = (): string => {
-    return AllActionStrings.join(", ");
+    return actionReference();
 }
