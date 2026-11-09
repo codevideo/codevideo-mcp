@@ -210,8 +210,9 @@ server.resource(
 
 tool(
     "codevideo_instructions_to_create_a_course",
+    "Instructions for building a multi-lesson course as one JSON object passed between tool calls (the older flow: codevideo_create_course_with_initial_metadata, then codevideo_add_lesson_to_course per lesson). For new courses prefer the server-side flow in codevideo_instructions_to_build_course_from_scratch.",
     {
-        additionalContext: z.string()
+        additionalContext: z.string().describe("What to build, in your own words: the lessons for a course, or the topic for a lesson.")
     },
     async ({ additionalContext }) => {
         return {
@@ -225,8 +226,9 @@ tool(
 
 tool(
     "codevideo_instructions_to_create_lesson_actions",
+    "Instructions for writing the actions of a single lesson: the action reference, the authoring rules, and how to store and render the result.",
     {
-        additionalContext: z.string()
+        additionalContext: z.string().describe("What to build, in your own words: the lessons for a course, or the topic for a lesson.")
     },
     async ({ additionalContext }) => {
         return {
@@ -240,8 +242,9 @@ tool(
 
 tool(
     "codevideo_instructions_to_create_lesson_video",
+    "Instructions for writing a single lesson and rendering it to video, either from an actions array (codevideo_make_video_from_actions) or from a full lesson object with snapshots (codevideo_make_video_from_lesson).",
     {
-        additionalContext: z.string()
+        additionalContext: z.string().describe("What to build, in your own words: the lessons for a course, or the topic for a lesson.")
     },
     async ({ additionalContext }) => {
         return {
@@ -275,6 +278,7 @@ tool(
 
 tool(
     "codevideo_get_empty_lesson_snapshot",
+    "An empty course snapshot (no files, editors or terminal output) as JSON, to use as the initialSnapshot of a lesson that starts from nothing.",
     {},
     async () => {
         return {
@@ -290,6 +294,7 @@ tool(
 
 tool(
     "codevideo_create_course_with_initial_metadata",
+    "Returns a new course object as JSON (id, name, description, primaryLanguage, no lessons) for the older flow where the course JSON is passed between tool calls. Nothing is stored; the server-side flow uses codevideo_create_course.",
     {
         id: z.string(),
         name: z.string(),
@@ -308,6 +313,7 @@ tool(
 
 tool(
     "codevideo_add_actions_to_lesson",
+    "Sets a lesson object's actions, replacing any it had, and returns the updated lesson as JSON. Nothing is stored; for stored courses use codevideo_set_lesson_actions.",
     {
         lesson: LessonSchema,
         actions: z.array(ActionSchema)
@@ -349,6 +355,7 @@ tool(
 
 tool(
     "codevideo_add_lesson_to_course",
+    "Appends a new, empty lesson (id, name, description, an empty initial snapshot) to a course object and returns the updated course as JSON. Nothing is stored; for stored courses use codevideo_add_lesson.",
     {
         course: CourseSchema,
         id: z.string(),
@@ -384,8 +391,9 @@ tool(
 
 tool(
     "codevideo_get_example_actions_array_by_keyword",
+    "An example actions array as JSON for a keyword: javascript, js, console log or log; go, golang, golang console log or golang log; python, python console log or python log. Returns an empty string when nothing matches.",
     {
-        keyword: z.string()
+        keyword: z.string().describe("One of the keywords listed in this tool's description.")
     },
     async ({ keyword }) => {
         return {
@@ -399,8 +407,9 @@ tool(
 
 tool(
     "codevideo_get_example_lesson_by_keyword",
+    "An example lesson as JSON (a Go CLI tool explored from an existing codebase) for the keyword go, golang, explore codebase, existing codebase or go cli tool. Returns an empty string when nothing matches.",
     {
-        keyword: z.string()
+        keyword: z.string().describe("One of the keywords listed in this tool's description.")
     },
     async ({ keyword }) => {
         return {
@@ -556,6 +565,7 @@ tool(
 
 tool(
     "codevideo_is_repeatable_action",
+    "Whether an action's value is a repeat count (how many times to press the key or run the step) rather than text. Returns true or false.",
     {
         action: ActionSchema
     },

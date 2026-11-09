@@ -34,6 +34,9 @@ try {
   await client.connect(transport);
   const tools = await client.listTools();
   assert.ok(tools.tools.length >= 40);
+  // The model only sees what a tool says about itself, so every tool needs a description.
+  const undescribed = tools.tools.filter((tool) => !tool.description?.trim()).map((tool) => tool.name);
+  assert.deepEqual(undescribed, [], `Tools without a description: ${undescribed.join(", ")}`);
 } finally {
   await client.close();
   fs.rmSync(home, { recursive: true, force: true });
