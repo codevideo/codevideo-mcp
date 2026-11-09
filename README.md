@@ -180,3 +180,16 @@ Then, use the following JSON to run the local version on your Claude Desktop:
 
 - Compile checks can't resolve third-party packages yet: a lesson that imports `react` reports "Cannot find module 'react'", so courses that depend on npm packages can't pass `codevideo_validate_course`.
 - With CLI 0.0.13, a project is passed to the CLI on its command line, so a single lesson is limited to about 120 KiB as JSON (about 30 KB on Windows). The MCP refuses bigger ones with a clear message.
+
+
+## Lesson verification
+
+`codevideo_compile_lesson` freshly replays a lesson from a cloned initial snapshot and checks its saved end-state projects. It reports `outcome: passed | failed | blocked | unsupported`; legacy `status` is `ok` only for passed. Each project reports its root, declared check (`syntax`, `typecheck`, `build`), checked/supporting/unsupported paths, compiler version, structured errors and prerequisite issues. Missing tools/dependencies and nothing-checkable lessons never pass.
+
+Dirty editor buffers and disagreement with a stored final snapshot are reported in `lessonIssues`; the server does not autosave or silently repair snapshots. Save buffers using actions, then reapply edits and recheck. Replay warnings remain warnings. Course completion requires passed verification for every mustCompile lesson and the final lesson. Intermediate mustCompile:false lessons remain available for deliberate errors or discussion.
+
+TS/JS verification uses real compiler inputs, local project configuration and available dependency declarations. No generated untyped import shims are used. The existing `diagnostics` field and hover checks remain Monaco-compatible presentation checks and do not establish a project pass. Python guarantees syntax only; Go and C# perform offline builds. Rust is explicitly unsupported. See dynamic AST's README for prerequisites and limitations; native builds are not a security sandbox.
+
+No dependency restoration from the network occurs during verification. `CODEVIDEO_HOME` optionally sets the MCP state directory (default ~/.codevideo), including for isolated tests.
+
+To test unreleased compiler changes without publishing: build dynamic AST and create a tarball with `npm pack --ignore-scripts`; install it locally with `npm install --no-save --package-lock=false <tarball>`, then run the MCP typecheck, tests and build. If the existing local diagnostics changes in codevideo-types are also unreleased, pack that package and set `CODEVIDEO_TYPES_TARBALL` to its absolute path. Set `CODEVIDEO_DYNAMIC_AST_TARBALL` to the compiler tarball path when running `npm run smoke:packed` to exercise the actual packaged compiler through MCP. Neither package version is changed by this workflow. Before shipping, the corresponding compiler release must be published and the MCP dependency/lockfile updated together.

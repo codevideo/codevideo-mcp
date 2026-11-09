@@ -22,6 +22,8 @@ export const RenderOptionsSchema = z
         isMinimapVisible: z.boolean().optional(),
         isMouseVisible: z.boolean().optional()
             .describe("Draw the mouse cursor. Mouse actions keep their timing and effects when it's hidden."),
+        isDiagnosticsVisible: z.boolean().optional()
+            .describe("Show TypeScript squiggles (red errors, yellow warnings) for the whole video. editor-show-diagnostics / editor-hide-diagnostics actions switch them for part of a lesson instead."),
         wordWrap: z.enum(["on", "off"]).optional(),
         keyboardTypingPauseMs: z.number().int().positive().optional(),
         standardPauseMs: z.number().int().positive().optional(),
@@ -54,6 +56,7 @@ export const IDE_PROP_KEYS = [
     "isEditorTabsVisible",
     "isMinimapVisible",
     "isMouseVisible",
+    "isDiagnosticsVisible",
     "wordWrap",
     "keyboardTypingPauseMs",
     "standardPauseMs",

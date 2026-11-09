@@ -7,8 +7,8 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 /** A fresh home directory; the MCP keeps its database and job folders under it. */
 export const tempHome = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "codevideo-mcp-test-"));
 
-/** os.homedir() reads HOME on Unix and USERPROFILE on Windows. */
-export const homeEnv = (home: string): Record<string, string> => ({ HOME: home, USERPROFILE: home });
+/** Isolate MCP state without changing the operating-system home directory. */
+export const homeEnv = (home: string): Record<string, string> => ({ CODEVIDEO_HOME: path.join(home, ".codevideo") });
 
 export const FAKE_CLI = path.resolve("test/fixtures/fake-cli.mjs");
 

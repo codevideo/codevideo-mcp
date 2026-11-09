@@ -802,7 +802,7 @@ tool(
 
 tool(
     "codevideo_compile_lesson",
-    "Compile the code at the end of a lesson and return only the structured errors. Use this to check a lesson builds before moving on.",
+    "Replay a lesson and verify its saved end-state projects offline. Returns passed, failed, blocked, or unsupported, with check kinds and actionable issues. Monaco diagnostics are presentation-only; dirty buffers prevent a pass.",
     { courseId: z.string(), lessonId: z.string() },
     async ({ courseId, lessonId }) => ({
         content: [{ type: "text", text: await compileLessonTool(courseId, lessonId) }]
@@ -811,7 +811,7 @@ tool(
 
 tool(
     "codevideo_validate_course",
-    "Validate the whole course: per-lesson action validity, snapshot continuity, and compilation (for mustCompile lessons + the final lesson). Returns done:true when the course is complete.",
+    "Validate actions, continuity, diagnostic hovers, and fresh saved-file project verification. Every mustCompile lesson and the final lesson must have outcome passed; blocked/unsupported/dirty/stale states prevent done:true.",
     { courseId: z.string() },
     async ({ courseId }) => ({
         content: [{ type: "text", text: await validateCourseTool(courseId) }]

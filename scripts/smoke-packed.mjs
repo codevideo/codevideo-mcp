@@ -32,6 +32,9 @@ try {
     : [`@fullstackcraftllc/codevideo-cli@${cliRange}`, mcpTarball];
 
   run("npm", ["init", "-y"], temp);
+  // Unreleased compiler changes can be smoke-tested without publishing either package.
+  if (process.env.CODEVIDEO_DYNAMIC_AST_TARBALL) installSpecs.unshift(path.resolve(process.env.CODEVIDEO_DYNAMIC_AST_TARBALL));
+  if (process.env.CODEVIDEO_TYPES_TARBALL) installSpecs.unshift(path.resolve(process.env.CODEVIDEO_TYPES_TARBALL));
   run("npm", ["install", "--ignore-scripts", "--package-lock=false", ...installSpecs], temp);
 
   const installedScope = path.join(temp, "node_modules", "@fullstackcraftllc");
@@ -55,7 +58,7 @@ try {
     command: process.execPath,
     args: [path.join(installedScope, "codevideo-mcp", "dist", "index.js")],
     cwd: temp,
-    env: { ...process.env, HOME: home, USERPROFILE: home },
+    env: { ...process.env, CODEVIDEO_HOME: path.join(home, ".codevideo") },
     stderr: "pipe",
   });
   let serverStderr = "";
@@ -70,6 +73,22 @@ try {
     }
     const tools = await client.listTools();
     assert.ok(tools.tools.length >= 40);
+    if (process.env.CODEVIDEO_DYNAMIC_AST_TARBALL) {
+      const call = async (name, args) => JSON.parse((await client.callTool({ name, arguments: args })).content[0].text);
+      const { courseId } = await call("codevideo_create_course", { name: "Packed verification" });
+      const { lessonId } = await call("codevideo_add_lesson", { courseId, name: "Typed value", description: "Verify a saved source file" });
+      for (const value of ["1", '\"bad\"', "2"]) {
+        await call("codevideo_set_lesson_actions", { courseId, lessonId, actions: [
+          { name: "file-explorer-create-file", value: "main.ts" },
+          { name: "file-explorer-open-file", value: "main.ts" },
+          { name: "editor-type", value: `export const n: number = ${value};` },
+          { name: "editor-save", value: "1" },
+        ] });
+        const checked = await call("codevideo_compile_lesson", { courseId, lessonId });
+        assert.equal(checked.outcome, value === '\"bad\"' ? "failed" : "passed", JSON.stringify(checked));
+      }
+      console.log("Packed compiler verified good, invalid, and repaired lesson files.");
+    }
     console.log(`Packed install exposed ${tools.tools.length} MCP tools with ${platformPackages[0]}.`);
   } finally {
     await client.close();

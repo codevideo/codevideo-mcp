@@ -15,7 +15,7 @@ export type Db = DatabaseSync;
 
 /** ~/.codevideo, created on first use. The database, render jobs, exports and previews live here. */
 export const codevideoHome = (): string => {
-    const dir = path.join(os.homedir(), ".codevideo");
+    const dir = process.env.CODEVIDEO_HOME || path.join(os.homedir(), ".codevideo");
     fs.mkdirSync(dir, { recursive: true });
     return dir;
 };

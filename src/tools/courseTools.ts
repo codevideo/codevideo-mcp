@@ -13,14 +13,15 @@ import {
     getLessonActions,
     getLessonFile,
     getLessonFileTree,
-    getLessonFiles,
     listLessons,
     setLessonActions,
 } from "../store/courseStore";
 import { codevideoHome } from "../store/db";
 import { estimatedSeconds } from "../render/queue";
-import { compileFiles, ICompileCheckResult } from "./compileCheck";
+import { ICompileCheckResult } from "./compileCheck";
+import { verifyLesson, LessonVerification } from "./verifyLesson";
 import { describeRejected, RejectedAction, rejectedActionsIn, valueHint } from "../validation/rejectedActions";
+import { checkDiagnosticHovers, DiagnosticHoverProblem } from "../validation/diagnosticHovers";
 
 // All tool functions return a JSON string for the MCP `text` content block.
 const ok = (data: unknown): string => JSON.stringify(data, null, 2);
@@ -120,9 +121,8 @@ export const getLessonFileTool = (courseId: string, lessonId: string, filePath: 
 // ---------- compile + validate ----------
 
 export const compileLessonTool = async (courseId: string, lessonId: string): Promise<string> => {
-    const files = getLessonFiles(courseId, lessonId);
-    const result = await compileFiles(files);
-    return ok({ courseId, lessonId, fileCount: files.length, ...result });
+    const result = await verifyLesson(getLesson(courseId, lessonId));
+    return ok({ courseId, lessonId, ...result });
 };
 
 interface LessonValidation {
@@ -138,6 +138,9 @@ interface LessonValidation {
     mustCompile: boolean;
     compileStatus: ICompileCheckResult["status"] | "skipped";
     compileErrors: ICompileCheckResult["projects"];
+    verification?: LessonVerification;
+    /** mouse-move-editor-diagnostic actions that wouldn't land on a squiggle. */
+    diagnosticHoverProblems: DiagnosticHoverProblem[];
 }
 
 export interface CourseValidation {
@@ -172,11 +175,14 @@ export const validateCourse = async (courseId: string): Promise<CourseValidation
 
         let compileStatus: LessonValidation["compileStatus"] = "skipped";
         let compileErrors: ICompileCheckResult["projects"] = [];
+        let verification: LessonVerification | undefined;
         if (lesson.mustCompile) {
-            const c = await compileFiles(getLessonFiles(courseId, lesson.id));
+            const c = verification = await verifyLesson(lesson);
             compileStatus = c.status;
-            compileErrors = c.projects.filter((p) => p.errors.length > 0);
+            compileErrors = c.projects.filter((p) => p.outcome !== "passed");
         }
+
+        const diagnosticHoverProblems = checkDiagnosticHovers(lesson.initialSnapshot, lesson.actions);
 
         results.push({
             lessonId: lesson.id,
@@ -191,6 +197,8 @@ export const validateCourse = async (courseId: string): Promise<CourseValidation
             mustCompile: lesson.mustCompile,
             compileStatus,
             compileErrors,
+            verification,
+            diagnosticHoverProblems,
         });
     }
 
@@ -204,7 +212,9 @@ export const validateCourse = async (courseId: string): Promise<CourseValidation
     const finalLesson = results[results.length - 1];
     const finalCompilesClean = !!finalLesson && finalLesson.mustCompile && finalLesson.compileStatus === "ok";
 
-    const done = lessons.length > 0 && allHaveActions && allActionsValid && allAllowed && allOpenWithSpeech && allContinuous && allMustCompileClean && finalCompilesClean;
+    const allHoversLand = results.every((r) => r.diagnosticHoverProblems.length === 0);
+
+    const done = lessons.length > 0 && allHaveActions && allActionsValid && allAllowed && allOpenWithSpeech && allContinuous && allMustCompileClean && finalCompilesClean && allHoversLand;
 
     const reasons: string[] = [];
     if (lessons.length === 0) reasons.push("Course has no lessons.");
@@ -228,8 +238,16 @@ export const validateCourse = async (courseId: string): Promise<CourseValidation
     for (const result of results.filter((r) => r.rejectedActions.length > 0)) {
         reasons.push(`Lesson "${result.name}" (${result.lessonId}) uses actions lessons can't use; ${describeRejected(result.rejectedActions)}.`);
     }
+    for (const result of results.filter((r) => r.diagnosticHoverProblems.length > 0)) {
+        const details = result.diagnosticHoverProblems.map((p) => `action ${p.index} (${p.value}): ${p.reason}`);
+        reasons.push(`Lesson "${result.name}" (${result.lessonId}) has mouse-move-editor-diagnostic actions that miss: ${details.join("; ")}.`);
+    }
     if (!allContinuous) reasons.push("Some lessons do not follow cleanly from the previous lesson (snapshot discontinuity).");
-    if (!allMustCompileClean) reasons.push("Some lessons marked mustCompile do not compile cleanly.");
+    for (const result of results.filter(r => r.mustCompile && r.verification?.outcome !== 'passed')) {
+        const verification = result.verification!;
+        const detail = [...verification.lessonIssues.map(i => i.message), ...verification.projects.flatMap(p => p.issues.map(i => i.message))].join('; ');
+        reasons.push(`Lesson "${result.name}" verification ${verification.outcome}: ${detail}`);
+    }
     if (finalLesson && !finalLesson.mustCompile) reasons.push("The final lesson must be marked mustCompile (all code should work by the end).");
     else if (!finalCompilesClean) reasons.push("The final lesson does not compile cleanly.");
 
