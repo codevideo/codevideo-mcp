@@ -28,7 +28,7 @@ Validation:
 - Node.js 22.13 or newer. The MCP keeps its data in SQLite through Node's built-in `node:sqlite`, so nothing native is compiled on install.
 - For videos: the npm package installs the matching native CodeVideo CLI automatically, and rendering also needs Chrome/Chromium and FFmpeg.
 - For narration, one of:
-  - **ElevenLabs:** `ELEVEN_LABS_API_KEY` (and optionally `ELEVEN_LABS_VOICE_ID`). The CLI uploads each clip to CodeVideo's S3 bucket, so this also needs `CODEVIDEO_S3_KEY_ID` and `CODEVIDEO_S3_SECRET` with access to it.
+  - **ElevenLabs:** `ELEVEN_LABS_API_KEY` (and optionally `ELEVEN_LABS_VOICE_ID`). With CLI 0.0.15 or newer that's all: the clips are embedded in the render job. To serve them from your own S3 bucket instead, add `CODEVIDEO_S3_KEY_ID`, `CODEVIDEO_S3_SECRET`, `CODEVIDEO_S3_BUCKET` and `CODEVIDEO_S3_REGION`; see [Narration](https://docs.codevideo.io/cli#narration). Clips are reused when a line is narrated again, so re-rendering costs nothing.
   - **Kokoro** (self-hosted, no cloud account): `CODEVIDEO_TTS_PROVIDER=kokoro` and `TTS_SERVICE_URL` pointing at a codevideo-tts (Kokoro) service. Clips are embedded in the video job directly.
 
 ## Usage with Claude Desktop
@@ -61,7 +61,7 @@ Add the server under `mcpServers` in your `claude_desktop_config.json` file, nex
 }
 ```
 
-(Or the ElevenLabs and S3 variables from [Requirements](#requirements) instead of the two Kokoro ones.)
+(Or the ElevenLabs variables from [Requirements](#requirements) instead of the two Kokoro ones.)
 
 ## Usage with Claude Code
 
@@ -69,7 +69,7 @@ Add the server under `mcpServers` in your `claude_desktop_config.json` file, nex
 claude mcp add codevideo -e CODEVIDEO_TTS_PROVIDER=kokoro -e TTS_SERVICE_URL=http://localhost:3000 -- npx -y @fullstackcraftllc/codevideo-mcp@latest
 ```
 
-Pass the ElevenLabs and S3 variables with `-e` instead of the two Kokoro ones if you use ElevenLabs.
+Pass the ElevenLabs variables with `-e` instead of the two Kokoro ones if you use ElevenLabs.
 
 ## Usage with Codex
 
@@ -80,7 +80,7 @@ Add the published MCP server to `~/.codex/config.toml`:
 command = "npx"
 args = ["-y", "@fullstackcraftllc/codevideo-mcp@latest"]
 startup_timeout_sec = 60
-env_vars = ["CODEVIDEO_TTS_PROVIDER", "TTS_SERVICE_URL", "ELEVEN_LABS_API_KEY", "ELEVEN_LABS_VOICE_ID", "CODEVIDEO_S3_KEY_ID", "CODEVIDEO_S3_SECRET", "GEMINI_API_KEY"]
+env_vars = ["CODEVIDEO_TTS_PROVIDER", "TTS_SERVICE_URL", "ELEVEN_LABS_API_KEY", "ELEVEN_LABS_VOICE_ID", "CODEVIDEO_S3_KEY_ID", "CODEVIDEO_S3_SECRET", "CODEVIDEO_S3_BUCKET", "CODEVIDEO_S3_REGION", "GEMINI_API_KEY"]
 ```
 
 Restart Codex or open a new thread after changing MCP configuration.
