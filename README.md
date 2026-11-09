@@ -41,27 +41,35 @@ npx @fullstackcraftllc/codevideo-cli doctor
 
 If Chrome is not detected, run `npx @fullstackcraftllc/codevideo-cli install-browser`. `PATH_TO_CODEVIDEO_CLI` remains available as an optional override for local CLI builds.
 
-Simply drop the following into your `claude_desktop_config.json` file:
+Add the server under `mcpServers` in your `claude_desktop_config.json` file, next to any others you have:
 
 ```json
 {
-    // ... other MCP servers
-    "codevideo-mcp": {
-        "command": "npx",
-        "args": [
-            "-y",
-            "@fullstackcraftllc/codevideo-mcp@latest"
-        ],
-        "env": {
-            "CODEVIDEO_TTS_PROVIDER": "kokoro",
-            "TTS_SERVICE_URL": "http://localhost:3000"
+    "mcpServers": {
+        "codevideo-mcp": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@fullstackcraftllc/codevideo-mcp@latest"
+            ],
+            "env": {
+                "CODEVIDEO_TTS_PROVIDER": "kokoro",
+                "TTS_SERVICE_URL": "http://localhost:3000"
+            }
         }
-    },
-    // ... other MCP servers
+    }
 }
 ```
 
 (Or the ElevenLabs and S3 variables from [Requirements](#requirements) instead of the two Kokoro ones.)
+
+## Usage with Claude Code
+
+```shell
+claude mcp add codevideo -e CODEVIDEO_TTS_PROVIDER=kokoro -e TTS_SERVICE_URL=http://localhost:3000 -- npx -y @fullstackcraftllc/codevideo-mcp@latest
+```
+
+Pass the ElevenLabs and S3 variables with `-e` instead of the two Kokoro ones if you use ElevenLabs.
 
 ## Usage with Codex
 
@@ -117,6 +125,7 @@ All four video tools take the same `options`:
 | `keyboardTypingPauseMs`, `standardPauseMs`, `longPauseMs` | pacing |
 | `voiceId`, `ttsProvider` | narration voice and provider |
 | `renderMode` | `realtime` (default) or `deterministic`; `renderSeed` and `renderWorkers` (1–32) apply to deterministic renders |
+| `isDiagnosticsVisible` | `true` / `false`: TypeScript squiggles in the editor from the start; lessons can also turn them on and off with `editor-show-diagnostics` and `editor-hide-diagnostics` |
 
 They also take `open`: whether to open the finished video in your default player. It defaults to on for single videos and off for whole courses.
 
@@ -124,7 +133,7 @@ Videos are saved to `CODEVIDEO_OUTPUT_DIR`, or your Desktop.
 
 ## Where your data lives
 
-Everything is under `~/.codevideo/`:
+Everything is under `~/.codevideo/`, or the folder `CODEVIDEO_HOME` points to:
 
 - `codevideo.db`: courses, lessons, the legacy single slot, and the render queue.
 - `jobs/<jobId>/`: each render's project, settings and CLI logs (`stdout.log`, `stderr.log`); `jobs/worker.log` is the worker's own log.
