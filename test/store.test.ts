@@ -172,6 +172,28 @@ test("validation rejects composite actions, which nothing implements yet", async
     );
 });
 
+test("validation rejects a paste with nothing on the clipboard", async () => {
+    const courseId = createCourse({ name: "Paste" });
+    const lessonId = addLesson(courseId, { name: "From the docs" });
+    const typed = viaMouse("x.ts", "export const x = 1;\n").slice(0, -1);
+    const paste = { name: "editor-command-v", value: "1" } as IAction;
+    const save = { name: "editor-save", value: "1" } as IAction;
+
+    setLessonActions(courseId, lessonId, [opening, ...typed, paste, save]);
+    const rejected = await validateCourse(courseId);
+    assert.equal(rejected.done, false);
+    assert.ok(
+        rejected.reasons.some((reason) => reason.includes(`action ${typed.length + 1} (editor-command-v): the clipboard is empty here`)),
+        JSON.stringify(rejected.reasons)
+    );
+
+    const fromDocs = { name: "clipboard-set-text", value: "export const y = 2;\n" } as IAction;
+    setLessonActions(courseId, lessonId, [opening, ...typed, fromDocs, paste, save]);
+    const accepted = await validateCourse(courseId);
+    assert.equal(accepted.done, true, JSON.stringify(accepted.reasons));
+    assert.equal(getLessonFile(courseId, lessonId, "x.ts"), "export const x = 1;\nexport const y = 2;\n");
+});
+
 test("validation requires every lesson to open with speech", async () => {
     const courseId = createCourse({ name: "Openings" });
     const lessonId = addLesson(courseId, { name: "Silent start" });

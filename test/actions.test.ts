@@ -85,6 +85,27 @@ test("storing a lesson flags actions lessons can't use, until an edit swaps them
     });
 });
 
+test("storing a lesson flags a paste with nothing on the clipboard", async () => {
+    await withMcp(async (mcp) => {
+        const { courseId } = await mcp.call("codevideo_create_course", { name: "Paste", primaryLanguage: "typescript" });
+        const { lessonId } = await mcp.call("codevideo_add_lesson", { courseId, name: "Only", description: "Pastes into a.ts." });
+        const stored = await mcp.call("codevideo_set_lesson_actions", {
+            courseId,
+            lessonId,
+            actions: [
+                { name: "mouse-move-file-explorer", value: "1" },
+                { name: "mouse-right-click", value: "1" },
+                { name: "mouse-move-file-explorer-context-menu-new-file", value: "1" },
+                { name: "mouse-left-click", value: "1" },
+                { name: "file-explorer-type-new-file-input", value: "a.ts" },
+                { name: "file-explorer-enter-new-file-input", value: "1" },
+                { name: "editor-command-v", value: "1" },
+            ],
+        });
+        assert.match(stored.problems, /action 6 \(editor-command-v\): the clipboard is empty here/);
+    });
+});
+
 test("each lesson needs a description, and the next lesson gets it back for its recap", async () => {
     await withMcp(async (mcp) => {
         const { courseId } = await mcp.call("codevideo_create_course", { name: "Recaps", primaryLanguage: "typescript" });

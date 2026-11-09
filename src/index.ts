@@ -821,7 +821,7 @@ tool(
 
 tool(
     "codevideo_validate_course",
-    "Validate actions, continuity, diagnostic hovers, and fresh saved-file project verification. Every mustCompile lesson and the final lesson must have outcome passed; blocked/unsupported/dirty/stale states prevent done:true.",
+    "Validate actions, continuity, diagnostic hovers, copy/cut/paste presses that would do nothing, and fresh saved-file project verification. Every mustCompile lesson and the final lesson must have outcome passed; blocked/unsupported/dirty/stale states prevent done:true.",
     { courseId: z.string() },
     async ({ courseId }) => ({
         content: [{ type: "text", text: await validateCourseTool(courseId) }]

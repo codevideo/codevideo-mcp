@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { IAction, isValidAction } from "@fullstackcraftllc/codevideo-types";
+import { IAction, ICourseSnapshot, isValidAction } from "@fullstackcraftllc/codevideo-types";
 import {
     ActionEdit,
     addLesson,
@@ -22,6 +22,7 @@ import { ICompileCheckResult } from "./compileCheck";
 import { verifyLesson, LessonVerification } from "./verifyLesson";
 import { describeRejected, RejectedAction, rejectedActionsIn, valueHint } from "../validation/rejectedActions";
 import { checkDiagnosticHovers, DiagnosticHoverProblem } from "../validation/diagnosticHovers";
+import { checkClipboardKeys, ClipboardKeyProblem, describeClipboardKeyProblems } from "../validation/clipboardKeys";
 
 // All tool functions return a JSON string for the MCP `text` content block.
 const ok = (data: unknown): string => JSON.stringify(data, null, 2);
@@ -71,15 +72,20 @@ export const addLessonTool = (
 };
 
 /**
- * Flags actions lessons can't use as soon as they're stored, so the model can
- * swap just those with codevideo_edit_lesson_actions instead of finding out
- * at validation and resending the lesson.
+ * Flags actions lessons can't use, and copy, cut or paste presses that would
+ * do nothing, as soon as they're stored, so the model can change just those
+ * with codevideo_edit_lesson_actions instead of finding out at validation and
+ * resending the lesson.
  */
-const problemsWith = (actions: IAction[]): { problems?: string } => {
-    const rejected = rejectedActionsIn(actions);
-    return rejected.length === 0
-        ? {}
-        : { problems: `Stored, but codevideo_validate_course rejects this lesson until these are replaced: ${describeRejected(rejected)}. codevideo_edit_lesson_actions can swap just those actions.` };
+const problemsWith = (lesson: { initialSnapshot: ICourseSnapshot; actions: IAction[] }): { problems?: string } => {
+    const rejected = rejectedActionsIn(lesson.actions);
+    const presses = checkClipboardKeys(lesson.initialSnapshot, lesson.actions);
+    if (rejected.length === 0 && presses.length === 0) return {};
+    const details = [
+        ...(rejected.length ? [describeRejected(rejected)] : []),
+        ...(presses.length ? [describeClipboardKeyProblems(presses)] : []),
+    ];
+    return { problems: `Stored, but codevideo_validate_course rejects this lesson until these are fixed: ${details.join("; ")}. codevideo_edit_lesson_actions can change just those actions.` };
 };
 
 export const setLessonActionsTool = (courseId: string, lessonId: string, actions: IAction[]): string => {
@@ -88,7 +94,7 @@ export const setLessonActionsTool = (courseId: string, lessonId: string, actions
         ok: true,
         actionCount,
         message: `Stored ${actionCount} actions. Final snapshot recomputed server-side. Use codevideo_compile_lesson to check it builds.`,
-        ...problemsWith(actions),
+        ...problemsWith(getLesson(courseId, lessonId)),
     });
 };
 
@@ -98,7 +104,7 @@ export const editLessonActionsTool = (courseId: string, lessonId: string, edits:
         ok: true,
         actionCount,
         message: `Applied ${edits.length} edit(s); the lesson now has ${actionCount} actions. Snapshots recomputed server-side.`,
-        ...problemsWith(getLesson(courseId, lessonId).actions),
+        ...problemsWith(getLesson(courseId, lessonId)),
     });
 };
 
@@ -141,6 +147,8 @@ interface LessonValidation {
     verification?: LessonVerification;
     /** mouse-move-editor-diagnostic actions that wouldn't land on a squiggle. */
     diagnosticHoverProblems: DiagnosticHoverProblem[];
+    /** Copy, cut and paste presses that would do nothing on screen. */
+    clipboardKeyProblems: ClipboardKeyProblem[];
 }
 
 export interface CourseValidation {
@@ -183,6 +191,7 @@ export const validateCourse = async (courseId: string): Promise<CourseValidation
         }
 
         const diagnosticHoverProblems = checkDiagnosticHovers(lesson.initialSnapshot, lesson.actions);
+        const clipboardKeyProblems = checkClipboardKeys(lesson.initialSnapshot, lesson.actions);
 
         results.push({
             lessonId: lesson.id,
@@ -199,6 +208,7 @@ export const validateCourse = async (courseId: string): Promise<CourseValidation
             compileErrors,
             verification,
             diagnosticHoverProblems,
+            clipboardKeyProblems,
         });
     }
 
@@ -213,8 +223,9 @@ export const validateCourse = async (courseId: string): Promise<CourseValidation
     const finalCompilesClean = !!finalLesson && finalLesson.mustCompile && finalLesson.compileStatus === "ok";
 
     const allHoversLand = results.every((r) => r.diagnosticHoverProblems.length === 0);
+    const allClipboardKeysWork = results.every((r) => r.clipboardKeyProblems.length === 0);
 
-    const done = lessons.length > 0 && allHaveActions && allActionsValid && allAllowed && allOpenWithSpeech && allContinuous && allMustCompileClean && finalCompilesClean && allHoversLand;
+    const done = lessons.length > 0 && allHaveActions && allActionsValid && allAllowed && allOpenWithSpeech && allContinuous && allMustCompileClean && finalCompilesClean && allHoversLand && allClipboardKeysWork;
 
     const reasons: string[] = [];
     if (lessons.length === 0) reasons.push("Course has no lessons.");
@@ -241,6 +252,9 @@ export const validateCourse = async (courseId: string): Promise<CourseValidation
     for (const result of results.filter((r) => r.diagnosticHoverProblems.length > 0)) {
         const details = result.diagnosticHoverProblems.map((p) => `action ${p.index} (${p.value}): ${p.reason}`);
         reasons.push(`Lesson "${result.name}" (${result.lessonId}) has mouse-move-editor-diagnostic actions that miss: ${details.join("; ")}.`);
+    }
+    for (const result of results.filter((r) => r.clipboardKeyProblems.length > 0)) {
+        reasons.push(`Lesson "${result.name}" (${result.lessonId}) has copy, cut or paste presses that do nothing: ${describeClipboardKeyProblems(result.clipboardKeyProblems)}.`);
     }
     if (!allContinuous) reasons.push("Some lessons do not follow cleanly from the previous lesson (snapshot discontinuity).");
     for (const result of results.filter(r => r.mustCompile && r.verification?.outcome !== 'passed')) {
