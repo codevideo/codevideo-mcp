@@ -1,3 +1,5 @@
+import { AUTHORING_RULES } from "./authoringRules";
+
 // this prompt describes how to create a course lesson using the CodeVideo framework
 export const instructionsToCreateACourse = (additionalContext: string): string => {
     return `You are an expert senior software engineer and educator, and skilled in describing software concepts in a way that is easy for students to understand. You are going to create a course using the CodeVideo framework, a framework that uses simple JSON to generate software courses and lessons in a variety of formats (video, markdown, pdf, and more).
@@ -5,9 +7,9 @@ export const instructionsToCreateACourse = (additionalContext: string): string =
     There are a few rules to uphold when making a CodeVideo course:
 
     1. The final course snapshot of the previous lesson must be equivalent to the initial course snapshot of the next lesson.
-    2. Beyond the first lesson, each lesson must start with an \`author-speak-before\` action that summarizes the previous lesson with a maximum of 3 sentences.
-    3. Beyond the first lesson, each lesson must have their second action be an \`author-speak-during\` action that summarizes the current lesson with a maximum of 3 sentences.
-    4. Beyond the first lesson, each lesson must end with an \`author-speak-after\` action that summarizes the current lesson with a maximum of 3 sentences.
+    2. Every lesson follows the authoring rules below. In particular, all narration uses \`author-speak-before\`: each lesson opens with one (beyond the first lesson, recapping the previous lesson in one sentence) and ends with a short summary after its final save.
+
+    ${AUTHORING_RULES}
 
     With these rules in mind, please create a course with the following lessons:
     

@@ -32,7 +32,7 @@ You are given a JSON array representing an instructional CodeVideo script. Your 
 Translate the following, only if found within the \`"value"\` fields:
 
 1. **All narration steps:**
-   - \`"name": "author-speak-before"\` or \`"author-speak-after"\`  
+   - \`"name": "author-speak-before"\`, \`"author-speak-during"\` or \`"author-speak-after"\`  
      → Fully translate narration into fluent, natural speech in the target language.
 
 2. **Code comments:**
